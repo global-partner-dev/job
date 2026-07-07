@@ -2,7 +2,7 @@ import type { KeyboardEvent, MouseEvent } from 'react'
 import type { ScoredJob } from '../types'
 import { timeAgo, joinedLabel, skillsOf, bestTitle } from '../lib/format'
 import { flagFor } from '../lib/flags'
-import { tierColor } from '../lib/scoring'
+import { token } from '../lib/palette'
 import ScoreBadge from './ScoreBadge'
 import AiSummary from './AiSummary'
 
@@ -14,33 +14,36 @@ interface JobCardProps {
   onOpen: (job: ScoredJob) => void
 }
 
-export default function JobCard({
-  job,
-  isNew,
-  isSaved,
-  onToggleSave,
-  onOpen,
-}: JobCardProps) {
+export default function JobCard({ job, isNew, isSaved, onToggleSave, onOpen }: JobCardProps) {
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    // Only react to keys on the card itself, not on the nested Save button.
+    if (e.target !== e.currentTarget) return
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       onOpen(job)
     }
   }
-
   const handleSave = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
     onToggleSave(job.id)
   }
 
   const country = job.client_country || 'Unknown'
-  const rating =
-    job.client_rating != null ? job.client_rating.toFixed(1) : null
+  const rating = job.client_rating != null ? job.client_rating.toFixed(1) : null
   const postedTime = job.posted_date_relative || timeAgo(job.first_seen_at)
   const joined = joinedLabel(job.client_joined_month, job.client_joined_year)
   const skills = skillsOf(job)
   const shownSkills = skills.slice(0, 6)
   const extraSkills = skills.length - shownSkills.length
+
+  const meta = [
+    `${flagFor(job.client_country)} ${country}`,
+    job.client_name || null,
+    job.budget ? `💰 ${job.budget}` : null,
+    job.bids_count != null ? `📊 ${job.bids_count} bids` : null,
+    rating ? `⭐ ${rating}` : null,
+    postedTime || null,
+  ].filter(Boolean) as string[]
 
   return (
     <div
@@ -49,29 +52,33 @@ export default function JobCard({
       onClick={() => onOpen(job)}
       onKeyDown={handleKeyDown}
       className={
-        'card p-4 cursor-pointer transition-colors hover:border-accent animate-fade-in relative flex flex-col gap-3' +
-        (isNew ? ' ring-1 ring-accent' : '')
+        'card group relative flex cursor-pointer flex-col gap-3 overflow-hidden p-4 pl-5 transition-all ' +
+        'hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-card-hover animate-fade-in' +
+        (isNew ? ' ring-1 ring-primary/40' : '')
       }
     >
-      {isNew && (
-        <span
-          className="badge animate-pulse-ring absolute right-3 top-3 z-10"
-          style={{
-            backgroundColor: 'rgb(var(--accent) / 0.16)',
-            color: 'rgb(var(--accent))',
-          }}
-        >
-          NEW
-        </span>
-      )}
+      {/* Tier accent strip */}
+      <span
+        className="absolute inset-y-0 left-0 w-1"
+        style={{ backgroundColor: token(job.scoring.tier) }}
+        aria-hidden
+      />
 
-      {/* Top row: score + title on the left, save star on the right */}
+      {/* Header */}
       <div className="flex items-start justify-between gap-3">
-        <div className={'flex flex-col gap-1' + (isNew ? ' pr-12' : '')}>
-          <div>
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <ScoreBadge scoring={job.scoring} size="sm" />
+            {isNew && (
+              <span
+                className="pill animate-pulse-ring"
+                style={{ backgroundColor: token('primary', 0.16), color: token('primary') }}
+              >
+                NEW
+              </span>
+            )}
           </div>
-          <h3 className="font-semibold text-content leading-snug line-clamp-2">
+          <h3 className="text-[15px] font-semibold leading-snug text-content line-clamp-2">
             {bestTitle(job)}
           </h3>
         </div>
@@ -87,8 +94,8 @@ export default function JobCard({
             width="18"
             height="18"
             viewBox="0 0 24 24"
-            fill={isSaved ? 'rgb(var(--accent))' : 'none'}
-            stroke="currentColor"
+            fill={isSaved ? token('warning') : 'none'}
+            stroke={isSaved ? token('warning') : 'currentColor'}
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -99,66 +106,46 @@ export default function JobCard({
         </button>
       </div>
 
-      {/* Meta row */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-        <span>
-          {flagFor(job.client_country)} {country}
-        </span>
-        {job.client_name && <span>{job.client_name}</span>}
-        {job.budget && <span>💰 {job.budget}</span>}
-        {job.bids_count != null && <span>📊 {job.bids_count} bids</span>}
-        {rating && <span>⭐ {rating}</span>}
-        {postedTime && <span>{postedTime}</span>}
+      {/* Meta */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+        {meta.map((m, i) => (
+          <span key={i} className="inline-flex items-center">
+            {i > 0 && <span className="mr-2 text-border">•</span>}
+            {m}
+          </span>
+        ))}
       </div>
 
-      {/* Verified line */}
-      <div>
+      {/* Verified + client stats */}
+      <div className="flex flex-wrap items-center gap-1.5">
         {job.client_payment_verified ? (
-          <span
-            className="badge"
-            style={{
-              backgroundColor: tierColor('good', 0.14),
-              color: tierColor('good'),
-            }}
-          >
-            ✅ Verified
+          <span className="pill" style={{ backgroundColor: token('good', 0.14), color: token('good') }}>
+            ✓ Verified
           </span>
         ) : (
-          <span className="badge text-subtle">❌ Unverified</span>
+          <span className="pill bg-surface-2 text-subtle">✕ Unverified</span>
         )}
+        {job.client_published_projects != null && (
+          <span className="chip">📢 {job.client_published_projects} published</span>
+        )}
+        {job.client_paid_projects != null && (
+          <span className="chip">💳 {job.client_paid_projects} paid</span>
+        )}
+        {joined && <span className="chip">📆 {joined}</span>}
       </div>
 
-      {/* Client stats chips */}
-      {(job.client_published_projects != null ||
-        job.client_paid_projects != null ||
-        joined) && (
-        <div className="flex flex-wrap gap-1">
-          {job.client_published_projects != null && (
-            <span className="chip">
-              📢 {job.client_published_projects} published
-            </span>
-          )}
-          {job.client_paid_projects != null && (
-            <span className="chip">💳 {job.client_paid_projects} paid</span>
-          )}
-          {joined && <span className="chip">📆 {joined}</span>}
-        </div>
-      )}
-
       {/* AI summary */}
-      {job.ai_summary && (
-        <AiSummary text={job.ai_summary} className="line-clamp-3" />
-      )}
+      {job.ai_summary && <AiSummary text={job.ai_summary} className="line-clamp-3" />}
 
       {/* Skills */}
       {shownSkills.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {shownSkills.map((skill) => (
-            <span key={skill} className="chip">
+        <div className="mt-auto flex flex-wrap gap-1 pt-1">
+          {shownSkills.map((skill, i) => (
+            <span key={`${skill}-${i}`} className="chip">
               {skill}
             </span>
           ))}
-          {extraSkills > 0 && <span className="chip">+{extraSkills}</span>}
+          {extraSkills > 0 && <span className="chip text-subtle">+{extraSkills}</span>}
         </div>
       )}
     </div>

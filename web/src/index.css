@@ -3,40 +3,64 @@
 @tailwind utilities;
 
 /* ============================================================================
-   Design tokens — light + dark. Values are space-separated RGB channels so
-   Tailwind's `rgb(var(--x) / <alpha-value>)` opacity modifiers work.
+   Design tokens — Datta Able-inspired admin palette (light + dark).
+   Values are space-separated RGB channels for Tailwind's `rgb(var(--x)/a)`.
    ========================================================================== */
 :root {
-  --bg: 247 248 250;
+  --bg: 244 247 250;          /* #f4f7fa canvas */
   --surface: 255 255 255;
-  --surface-2: 241 243 247;
-  --border: 224 227 233;
-  --text: 17 24 39;
-  --text-muted: 71 85 105;
-  --text-subtle: 130 140 155;
-  --accent: 99 102 241;      /* indigo-500 */
-  --accent-fg: 255 255 255;
+  --surface-2: 237 241 246;
+  --border: 232 237 242;
+  --text: 63 77 103;          /* #3f4d67 */
+  --text-muted: 137 150 163;
+  --text-subtle: 168 179 189;
 
-  --hot: 244 63 94;          /* rose-500  */
-  --good: 16 185 129;        /* emerald-500 */
-  --fair: 245 158 11;        /* amber-500 */
-  --low: 100 116 139;        /* slate-500 */
+  --primary: 4 169 245;       /* #04a9f5 signature cyan */
+  --primary-fg: 255 255 255;
+  --accent: var(--primary);   /* back-compat alias */
+  --accent-fg: var(--primary-fg);
+  --success: 46 216 182;      /* #2ed8b6 */
+  --warning: 244 194 43;      /* #f4c22b */
+  --danger: 244 66 54;        /* #f44236 */
+  --info: 62 191 234;         /* #3ebfea */
+
+  /* Sidebar stays dark in both themes for the classic admin look */
+  --sidebar: 28 35 47;        /* #1c232f */
+  --sidebar-2: 20 25 34;      /* brand / header block */
+  --sidebar-text: 169 183 208;
+
+  /* Score tiers mapped onto the palette */
+  --hot: 244 66 54;
+  --good: 46 216 182;
+  --fair: 244 194 43;
+  --low: 137 150 163;
 
   color-scheme: light;
 }
 
 .dark {
-  --bg: 9 11 17;
-  --surface: 20 24 33;
-  --surface-2: 28 33 45;
-  --border: 39 46 61;
+  --bg: 13 17 23;
+  --surface: 22 27 34;
+  --surface-2: 28 34 43;
+  --border: 42 50 62;
   --text: 226 232 240;
   --text-muted: 148 163 184;
   --text-subtle: 100 116 139;
-  --accent: 129 140 248;     /* indigo-400 */
-  --accent-fg: 12 14 20;
 
-  --hot: 251 113 133;
+  --primary: 56 189 248;
+  --primary-fg: 8 12 18;
+  --accent: var(--primary);   /* back-compat alias */
+  --accent-fg: var(--primary-fg);
+  --success: 52 211 153;
+  --warning: 251 191 36;
+  --danger: 248 113 113;
+  --info: 56 189 248;
+
+  --sidebar: 15 20 28;
+  --sidebar-2: 10 14 20;
+  --sidebar-text: 148 163 184;
+
+  --hot: 248 113 113;
   --good: 52 211 153;
   --fair: 251 191 36;
   --low: 148 163 184;
@@ -57,9 +81,8 @@
     @apply bg-bg text-content font-sans antialiased;
   }
   ::selection {
-    background: rgb(var(--accent) / 0.28);
+    background: rgb(var(--primary) / 0.24);
   }
-  /* Refined scrollbars */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -74,59 +97,114 @@
 }
 
 /* ============================================================================
-   Reusable component classes — use these so every view stays consistent.
+   Reusable component classes — the shared visual language.
    ========================================================================== */
 @layer components {
+  /* Surfaces ----------------------------------------------------------------*/
   .card {
-    @apply rounded-xl border border-border bg-surface shadow-card;
+    @apply rounded-lg border border-border/60 bg-surface shadow-card;
+  }
+  .card-pad {
+    @apply p-5;
+  }
+  .card-title {
+    @apply text-[15px] font-semibold text-content;
+  }
+  .card-sub {
+    @apply text-xs text-subtle;
+  }
+  .panel-header {
+    @apply flex items-center justify-between gap-3 border-b border-border/60 px-5 py-4;
   }
 
-  .chip {
-    @apply inline-flex items-center gap-1 rounded-md bg-surface-2 px-2 py-0.5 text-xs font-medium text-muted;
+  /* Stat widget -------------------------------------------------------------*/
+  .widget-stat {
+    @apply card flex items-center gap-4 p-5 transition-shadow hover:shadow-card-hover;
   }
-
-  .badge {
-    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold;
-  }
-
-  .stat-tile {
-    @apply card flex flex-col gap-1 p-4;
+  .icon-box {
+    @apply flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-xl;
   }
   .stat-value {
-    @apply text-2xl font-bold tracking-tight text-content;
+    @apply text-2xl font-bold leading-tight tracking-tight text-content;
   }
   .stat-label {
     @apply text-xs font-medium uppercase tracking-wide text-subtle;
   }
 
-  .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5
-           text-sm font-medium text-content transition-colors hover:bg-surface-2
-           focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-50;
+  /* Pills / badges / chips --------------------------------------------------*/
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold;
   }
+  .pill {
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-md bg-surface-2 px-2 py-0.5 text-xs font-medium text-muted;
+  }
+
+  /* Buttons -----------------------------------------------------------------*/
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5
+           text-sm font-medium text-content transition-colors hover:bg-surface-2
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-50;
+  }
+  .btn-primary,
   .btn-accent {
-    @apply border-transparent bg-accent text-accent-fg hover:bg-accent/90;
+    @apply border-transparent bg-primary text-accent-fg hover:opacity-90;
   }
   .btn-ghost {
     @apply border-transparent bg-transparent hover:bg-surface-2;
   }
   .btn-icon {
-    @apply btn h-9 w-9 p-0;
+    @apply btn h-9 w-9 shrink-0 p-0;
   }
 
+  /* Form controls -----------------------------------------------------------*/
   .input {
-    @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-content
-           placeholder:text-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60;
+    @apply w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-content
+           placeholder:text-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50;
   }
   .select {
-    @apply input appearance-none pr-8;
+    @apply input cursor-pointer appearance-none pr-8;
+  }
+
+  /* Sidebar -----------------------------------------------------------------*/
+  .sidebar-link {
+    @apply flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-sidebar-text
+           transition-colors hover:bg-white/5 hover:text-white;
+  }
+  .sidebar-link-active {
+    @apply bg-primary/15 text-white;
+  }
+  .sidebar-section {
+    @apply px-3 pb-2 pt-5 text-[11px] font-semibold uppercase tracking-wider text-sidebar-text/60;
+  }
+
+  /* Table -------------------------------------------------------------------*/
+  .table-admin {
+    @apply w-full border-collapse text-sm;
+  }
+  .table-admin thead th {
+    @apply border-b border-border/60 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-subtle;
+  }
+  .table-admin tbody td {
+    @apply border-b border-border/40 px-4 py-3 align-middle text-content;
+  }
+  .table-admin tbody tr {
+    @apply transition-colors hover:bg-surface-2/60;
+  }
+
+  /* Progress bar ------------------------------------------------------------*/
+  .progress {
+    @apply h-1.5 w-full overflow-hidden rounded-full bg-surface-2;
+  }
+  .progress-bar {
+    @apply h-full rounded-full;
   }
 
   .divider {
     @apply h-px w-full bg-border;
   }
-
-  /* AI summary bold phrases (rendered from **markdown**) */
   .ai-em {
     @apply font-semibold text-content;
   }

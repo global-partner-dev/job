@@ -56,6 +56,8 @@ export interface JobScore {
 /** A job augmented with its computed opportunity score. */
 export type ScoredJob = Job & { scoring: JobScore }
 
+export type View = 'dashboard' | 'jobs' | 'saved'
+
 export type SortKey = 'newest' | 'score' | 'fewest_bids' | 'budget' | 'rating'
 
 export interface Filters {

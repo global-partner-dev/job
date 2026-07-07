@@ -85,16 +85,17 @@ export default function JobDetailDrawer({
         onClick={onClose}
       />
       <aside
-        className="absolute right-0 top-0 h-full w-full max-w-lg overflow-y-auto bg-surface shadow-drawer animate-fade-in"
+        className="absolute right-0 top-0 h-full w-full max-w-lg overflow-y-auto bg-surface shadow-drawer animate-slide-in"
         role="dialog"
         aria-modal="true"
+        aria-labelledby="job-drawer-title"
       >
         <div className="space-y-5 p-5">
           {/* Header */}
           <div className="sticky top-0 z-10 -mx-5 -mt-5 flex items-start justify-between gap-3 bg-surface px-5 pb-3 pt-5">
             <div>
               <ScoreBadge scoring={job.scoring} />
-              <h2 className="mt-2 text-lg font-semibold text-content">
+              <h2 id="job-drawer-title" className="mt-2 text-lg font-semibold text-content">
                 {bestTitle(job)}
               </h2>
             </div>
