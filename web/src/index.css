@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================================
+   Design tokens — light + dark. Values are space-separated RGB channels so
+   Tailwind's `rgb(var(--x) / <alpha-value>)` opacity modifiers work.
+   ========================================================================== */
+:root {
+  --bg: 247 248 250;
+  --surface: 255 255 255;
+  --surface-2: 241 243 247;
+  --border: 224 227 233;
+  --text: 17 24 39;
+  --text-muted: 71 85 105;
+  --text-subtle: 130 140 155;
+  --accent: 99 102 241;      /* indigo-500 */
+  --accent-fg: 255 255 255;
+
+  --hot: 244 63 94;          /* rose-500  */
+  --good: 16 185 129;        /* emerald-500 */
+  --fair: 245 158 11;        /* amber-500 */
+  --low: 100 116 139;        /* slate-500 */
+
+  color-scheme: light;
+}
+
+.dark {
+  --bg: 9 11 17;
+  --surface: 20 24 33;
+  --surface-2: 28 33 45;
+  --border: 39 46 61;
+  --text: 226 232 240;
+  --text-muted: 148 163 184;
+  --text-subtle: 100 116 139;
+  --accent: 129 140 248;     /* indigo-400 */
+  --accent-fg: 12 14 20;
+
+  --hot: 251 113 133;
+  --good: 52 211 153;
+  --fair: 251 191 36;
+  --low: 148 163 184;
+
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    border-color: rgb(var(--border));
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-bg text-content font-sans antialiased;
+  }
+  ::selection {
+    background: rgb(var(--accent) / 0.28);
+  }
+  /* Refined scrollbars */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--border));
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--text-subtle));
+  }
+}
+
+/* ============================================================================
+   Reusable component classes — use these so every view stays consistent.
+   ========================================================================== */
+@layer components {
+  .card {
+    @apply rounded-xl border border-border bg-surface shadow-card;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-md bg-surface-2 px-2 py-0.5 text-xs font-medium text-muted;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold;
+  }
+
+  .stat-tile {
+    @apply card flex flex-col gap-1 p-4;
+  }
+  .stat-value {
+    @apply text-2xl font-bold tracking-tight text-content;
+  }
+  .stat-label {
+    @apply text-xs font-medium uppercase tracking-wide text-subtle;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5
+           text-sm font-medium text-content transition-colors hover:bg-surface-2
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-50;
+  }
+  .btn-accent {
+    @apply border-transparent bg-accent text-accent-fg hover:bg-accent/90;
+  }
+  .btn-ghost {
+    @apply border-transparent bg-transparent hover:bg-surface-2;
+  }
+  .btn-icon {
+    @apply btn h-9 w-9 p-0;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-content
+           placeholder:text-subtle focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60;
+  }
+  .select {
+    @apply input appearance-none pr-8;
+  }
+
+  .divider {
+    @apply h-px w-full bg-border;
+  }
+
+  /* AI summary bold phrases (rendered from **markdown**) */
+  .ai-em {
+    @apply font-semibold text-content;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
