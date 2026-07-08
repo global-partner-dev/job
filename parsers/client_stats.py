@@ -64,15 +64,26 @@ def _clean_text(text: str) -> str:
 
 
 def extract_full_project_description(soup: BeautifulSoup) -> Optional[str]:
-    # Primary: detail page article that starts with "About this project".
-    detail_article = soup.select_one("section.block-detail > article")
-    if detail_article:
-        text = detail_article.get_text("\n", strip=True)
-        text = _clean_text(text.replace("\n", " "))
+    # Primary: the full description body ("View more" expanded) lives in
+    # div.expander inside the detail block. This is the clean text — no
+    # "About this project … Open" breadcrumb and no skills/payment footer.
+    expander = (
+        soup.select_one("section.block-detail div.expander")
+        or soup.select_one("div.expander")
+    )
+    if expander:
+        text = _clean_text(expander.get_text(" ", strip=True))
         if text:
             return text
 
-    # Fallback: any section that includes the about-title text.
+    # Fallback: the whole detail article (includes some header/footer chrome).
+    detail_article = soup.select_one("section.block-detail > article")
+    if detail_article:
+        text = _clean_text(detail_article.get_text(" ", strip=True))
+        if text:
+            return text
+
+    # Last resort: the article around the "About this project" heading.
     about_heading = soup.find(string=re.compile(r"about this project", re.I))
     if about_heading:
         container = about_heading.find_parent("article")

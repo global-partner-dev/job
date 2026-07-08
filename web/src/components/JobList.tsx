@@ -1,5 +1,6 @@
 import type { Bid, ScoredJob } from '../types'
 import JobCard from './JobCard'
+import JobRow from './JobRow'
 
 interface JobListProps {
   jobs: ScoredJob[]
@@ -8,6 +9,8 @@ interface JobListProps {
   onToggleSave: (id: string) => void
   onOpen: (job: ScoredJob) => void
   loading: boolean
+  /** 'grid' = tiles (default), 'row' = full-width list rows. */
+  variant?: 'grid' | 'row'
   // BidBot selection (optional)
   selectable?: boolean
   selectedIds?: Set<string>
@@ -24,6 +27,7 @@ export default function JobList({
   onToggleSave,
   onOpen,
   loading,
+  variant = 'grid',
   selectable = false,
   selectedIds,
   onToggleSelect,
@@ -54,6 +58,27 @@ export default function JobList({
         <div className="mt-1 text-sm text-subtle">
           Try clearing filters or lowering the minimum score.
         </div>
+      </div>
+    )
+  }
+
+  if (variant === 'row') {
+    return (
+      <div className="flex flex-col gap-2">
+        {jobs.map((job) => (
+          <JobRow
+            key={job.id}
+            job={job}
+            isNew={liveIds.has(job.id)}
+            isSaved={savedIds.has(job.id)}
+            onToggleSave={onToggleSave}
+            onOpen={onOpen}
+            selectable={selectable}
+            selected={selectedIds?.has(job.id) ?? false}
+            onToggleSelect={onToggleSelect}
+            bidStatus={bidStatuses?.get(job.id)?.status}
+          />
+        ))}
       </div>
     )
   }

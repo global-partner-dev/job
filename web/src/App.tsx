@@ -239,6 +239,7 @@ function AppShell() {
                     onToggleSave={toggleSave}
                     onOpen={setSelected}
                     loading={loading}
+                    variant="row"
                     selectable
                     selectedIds={selectedIds}
                     onToggleSelect={toggleSelect}
