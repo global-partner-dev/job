@@ -137,17 +137,11 @@ create policy "own bids delete" on public.bids
   using (user_id = auth.uid() and public.is_approved());
 
 -- ---------------------------------------------------------------------------
--- Re-gate jobs + scrape_history: APPROVED users only (was public/anon read).
+-- Re-gate jobs: APPROVED users only (was public/anon read).
 -- The scraper keeps writing via the service_role key (bypasses RLS).
 -- ---------------------------------------------------------------------------
 drop policy if exists "public read jobs" on public.jobs;
 drop policy if exists "approved read jobs" on public.jobs;
 create policy "approved read jobs" on public.jobs
-  for select to authenticated
-  using (public.is_approved());
-
-drop policy if exists "public read scrape_history" on public.scrape_history;
-drop policy if exists "approved read scrape_history" on public.scrape_history;
-create policy "approved read scrape_history" on public.scrape_history
   for select to authenticated
   using (public.is_approved());

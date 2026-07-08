@@ -90,17 +90,7 @@ def run_scrape(db, scraper, summarizer):
 
         print(f"Saved to Supabase — New: {len(new_jobs)} | Updated: {updated_jobs}")
 
-        pages_scraped = max(1, len(scraped_jobs) // 20)
         duration = time.time() - start_time
-        db.save_scrape_history(
-            jobs_found=len(scraped_jobs),
-            new_jobs_count=len(new_jobs),
-            pages_scraped=pages_scraped,
-            duration_seconds=duration,
-            category=DEFAULT_CATEGORY,
-            language=DEFAULT_LANGUAGE,
-        )
-
         stats = db.get_statistics()
         print(
             f"Total jobs in DB: {stats['total_jobs']} | "

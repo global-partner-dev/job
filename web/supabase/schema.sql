@@ -52,22 +52,6 @@ create index if not exists idx_jobs_payment_verified   on public.jobs (client_pa
 create index if not exists idx_jobs_skills             on public.jobs using gin (skills);
 
 -- ---------------------------------------------------------------------------
--- scrape_history
--- ---------------------------------------------------------------------------
-create table if not exists public.scrape_history (
-    id                bigint generated always as identity primary key,
-    timestamp         timestamptz default now(),
-    jobs_found        integer,
-    new_jobs_count    integer,
-    pages_scraped     integer,
-    duration_seconds  numeric,
-    category          text,
-    language          text
-);
-
-create index if not exists idx_history_timestamp on public.scrape_history (timestamp desc);
-
--- ---------------------------------------------------------------------------
 -- Realtime — let the web app receive live INSERT/UPDATE events on jobs.
 -- Guarded so re-running this whole script stays idempotent (adding a table
 -- already in the publication would otherwise error and abort the batch).
@@ -85,14 +69,12 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- Row Level Security — deny by default. Read policies for jobs / scrape_history
--- are defined in 02_auth_multiuser.sql (approved authenticated users only). The
--- scraper writes with the service_role key, which bypasses RLS. Re-running this
--- file must NEVER re-open anon read, so here we only DROP any legacy public
--- policies (no-op if already gone) and never (re)create an anon-readable one.
+-- Row Level Security — deny by default. The read policy for jobs is defined in
+-- 02_auth_multiuser.sql (approved authenticated users only). The scraper writes
+-- with the service_role key, which bypasses RLS. Re-running this file must NEVER
+-- re-open anon read, so here we only DROP any legacy public policy (no-op if
+-- already gone) and never (re)create an anon-readable one.
 -- ---------------------------------------------------------------------------
-alter table public.jobs           enable row level security;
-alter table public.scrape_history enable row level security;
+alter table public.jobs enable row level security;
 
 drop policy if exists "public read jobs" on public.jobs;
-drop policy if exists "public read scrape_history" on public.scrape_history;

@@ -37,6 +37,9 @@ const DEFAULT_FILTERS: Filters = {
   savedOnly: false,
   country: '',
   minScore: 0,
+  minBudget: 0,
+  maxBudget: 0,
+  lastReplyMaxHours: 0,
   sort: 'newest',
 }
 

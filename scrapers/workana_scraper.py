@@ -24,7 +24,7 @@ from config.settings import (
     USER_AGENT, CHROME_OPTIONS
 )
 from config.selectors import SELECTORS
-from parsers.job_parser import parse_job_element, parse_job_element_from_html
+from parsers.job_parser import parse_job_element_from_html
 
 
 class WorkanaScraper:

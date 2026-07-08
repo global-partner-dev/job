@@ -43,6 +43,9 @@ export default function FilterBar({
       savedOnly: false,
       country: '',
       minScore: 0,
+      minBudget: 0,
+      maxBudget: 0,
+      lastReplyMaxHours: 0,
     })
   }
 
@@ -103,6 +106,46 @@ export default function FilterBar({
               {country}
             </option>
           ))}
+        </select>
+
+        {/* Price range (USD) */}
+        <div className="flex items-center gap-1" title="Budget range (USD)">
+          <input
+            type="number"
+            min={0}
+            step={50}
+            className="input w-[84px]"
+            placeholder="Min $"
+            value={filters.minBudget || ''}
+            onChange={(e) => onChange({ minBudget: Number(e.target.value) || 0 })}
+            aria-label="Minimum budget (USD)"
+          />
+          <span className="text-xs text-subtle">–</span>
+          <input
+            type="number"
+            min={0}
+            step={50}
+            className="input w-[84px]"
+            placeholder="Max $"
+            value={filters.maxBudget || ''}
+            onChange={(e) => onChange({ maxBudget: Number(e.target.value) || 0 })}
+            aria-label="Maximum budget (USD)"
+          />
+        </div>
+
+        {/* Last client reply */}
+        <select
+          className="select"
+          value={filters.lastReplyMaxHours}
+          onChange={(e) => onChange({ lastReplyMaxHours: Number(e.target.value) })}
+          aria-label="Last client reply within"
+        >
+          <option value={0}>Any reply time</option>
+          <option value={1}>Replied ≤ 1h</option>
+          <option value={6}>Replied ≤ 6h</option>
+          <option value={24}>Replied ≤ 24h</option>
+          <option value={72}>Replied ≤ 3d</option>
+          <option value={168}>Replied ≤ 7d</option>
         </select>
 
         {/* Min score */}

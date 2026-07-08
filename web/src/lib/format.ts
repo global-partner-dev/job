@@ -60,6 +60,29 @@ export function pct(part: number, whole: number): number {
   return Math.round((part / whole) * 100)
 }
 
+/**
+ * Parse a "last reply" relative-time string (EN/ES/PT) into hours.
+ * e.g. "7 hours ago" → 7, "10 minutes ago" → 0.17, "Just now" → 0,
+ * "2 days ago"/"hace 2 días"/"há 2 dias" → 48. Returns null if unparseable.
+ */
+export function lastReplyHours(text: string | null | undefined): number | null {
+  if (!text) return null
+  const t = text.trim().toLowerCase()
+  if (!t) return null
+  if (/(just now|ahora|agora)|^now$/.test(t)) return 0
+  if (/(yesterday|ayer|ontem)/.test(t)) return 30
+  const m = t.match(/(\d+)\s*([a-zà-ÿ]+)/)
+  const n = m ? parseInt(m[1], 10) : 1 // "an hour ago" → 1
+  const unit = m ? m[2] : t
+  if (/^(min|minute|minuto)/.test(unit)) return n / 60
+  if (/^(h|hr|hour|hora)/.test(unit)) return n
+  if (/^(d|day|dia|día)/.test(unit)) return n * 24
+  if (/^(w|week|semana)/.test(unit)) return n * 24 * 7
+  if (/^(mo|month|mes|mês)/.test(unit)) return n * 24 * 30
+  if (/^(year|ano|año)/.test(unit)) return n * 24 * 365
+  return null
+}
+
 export function absoluteUrl(job: Job): string {
   const url = job.url || ''
   if (!url) return ''

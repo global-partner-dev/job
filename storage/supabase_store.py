@@ -26,10 +26,9 @@ def _to_iso(value: Any) -> Optional[str]:
 
 
 class SupabaseJobStore:
-    """Stores scraped jobs and scrape history in Supabase Postgres."""
+    """Stores scraped jobs in Supabase Postgres."""
 
     JOBS_TABLE = "jobs"
-    HISTORY_TABLE = "scrape_history"
     PAGE_SIZE = 1000
 
     def __init__(self, url: str, key: str):
@@ -145,28 +144,6 @@ class SupabaseJobStore:
         self._existing_ids.add(job_id)
         return is_new
 
-    def save_scrape_history(
-        self,
-        jobs_found: int,
-        new_jobs_count: int,
-        pages_scraped: int,
-        duration_seconds: float,
-        category: str = None,
-        language: str = None,
-    ) -> None:
-        """Record statistics for one scraping session."""
-        self.client.table(self.HISTORY_TABLE).insert(
-            {
-                "timestamp": _utc_now_iso(),
-                "jobs_found": jobs_found,
-                "new_jobs_count": new_jobs_count,
-                "pages_scraped": pages_scraped,
-                "duration_seconds": duration_seconds,
-                "category": category,
-                "language": language,
-            }
-        ).execute()
-
     # ------------------------------------------------------------------
     # Stats
     # ------------------------------------------------------------------
@@ -184,7 +161,6 @@ class SupabaseJobStore:
             "new_jobs_24h": self._count(
                 self.JOBS_TABLE, lambda q: q.gte("first_seen_at", since)
             ),
-            "total_scrapes": self._count(self.HISTORY_TABLE),
         }
 
     def close(self) -> None:

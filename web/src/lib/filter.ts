@@ -1,5 +1,5 @@
 import type { Filters, ScoredJob } from '../types'
-import { bestDescription, bestTitle, skillsOf } from './format'
+import { bestDescription, bestTitle, lastReplyHours, skillsOf } from './format'
 
 function haystack(job: ScoredJob): string {
   return [
@@ -27,6 +27,26 @@ export function applyFilters(
     if (filters.budgetType !== 'all' && job.budget_type !== filters.budgetType) return false
     if (filters.country && job.client_country !== filters.country) return false
     if (job.scoring.score < filters.minScore) return false
+
+    // Price range — a job passes if its budget overlaps [minBudget, maxBudget].
+    // Jobs with no budget info are not excluded by the price filter.
+    if (filters.minBudget > 0 || filters.maxBudget > 0) {
+      const lo = job.budget_min ?? job.budget_max
+      const hi = job.budget_max ?? job.budget_min
+      if (lo != null || hi != null) {
+        const jobLo = lo ?? 0
+        const jobHi = hi ?? Number.POSITIVE_INFINITY
+        if (filters.maxBudget > 0 && jobLo > filters.maxBudget) return false
+        if (filters.minBudget > 0 && jobHi < filters.minBudget) return false
+      }
+    }
+
+    // Last-reply recency — client must have replied within N hours.
+    if (filters.lastReplyMaxHours > 0) {
+      const h = lastReplyHours(job.client_last_reply)
+      if (h == null || h > filters.lastReplyMaxHours) return false
+    }
+
     if (q && !haystack(job).includes(q)) return false
     return true
   })
