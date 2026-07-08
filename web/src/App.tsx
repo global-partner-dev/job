@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useJobs } from './hooks/useJobs'
 import { useSavedJobs } from './hooks/useSavedJobs'
-import { useScrapeHistory } from './hooks/useScrapeHistory'
 import { useTheme } from './hooks/useTheme'
 import { isSupabaseConfigured } from './lib/supabase'
 import { withScore } from './lib/scoring'
@@ -16,7 +15,6 @@ import Icon from './components/ui/Icon'
 import { token } from './lib/palette'
 import SetupNotice from './components/SetupNotice'
 import StatsBar from './components/StatsBar'
-import ScrapeHistoryChart from './components/ScrapeHistoryChart'
 import CountryBreakdown from './components/panels/CountryBreakdown'
 import TierDistribution from './components/panels/TierDistribution'
 import FilterBar from './components/FilterBar'
@@ -43,8 +41,6 @@ export default function App() {
   const { theme, toggle: toggleTheme } = useTheme()
   const { jobs, loading, error, liveIds, refresh } = useJobs()
   const { saved, toggle: toggleSave } = useSavedJobs()
-  const [historyKey, setHistoryKey] = useState(0)
-  const { runs } = useScrapeHistory(historyKey)
 
   const [view, setView] = useState<View>('dashboard')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -62,11 +58,6 @@ export default function App() {
   const topOpps = useMemo(() => topOpportunities(scored, 6), [scored])
 
   const patchFilters = (patch: Partial<Filters>) => setFilters((prev) => ({ ...prev, ...patch }))
-
-  const handleRefresh = () => {
-    refresh()
-    setHistoryKey((k) => k + 1)
-  }
 
   const handleSearch = (value: string) => {
     patchFilters({ search: value })
@@ -96,7 +87,7 @@ export default function App() {
           showSearch={view === 'dashboard'}
           onSearch={handleSearch}
           onToggleTheme={toggleTheme}
-          onRefresh={handleRefresh}
+          onRefresh={refresh}
           onOpenMenu={() => setMenuOpen(true)}
         />
 
@@ -115,40 +106,35 @@ export default function App() {
                 <div className="space-y-4 animate-fade-in">
                   <StatsBar stats={stats} />
 
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                    <div className="lg:col-span-2">
-                      <ScrapeHistoryChart runs={runs} />
-                    </div>
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <TierDistribution jobs={scored} />
+                    <CountryBreakdown jobs={scored} />
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                    <CountryBreakdown jobs={scored} />
-                    <section className="lg:col-span-2">
-                      <div className="mb-3 flex items-center justify-between">
-                        <div>
-                          <h2 className="card-title flex items-center gap-1.5">
-                            <span style={{ color: token('danger') }}>
-                              <Icon name="flame" size={18} />
-                            </span>
-                            Top opportunities
-                          </h2>
-                          <p className="card-sub">Highest-scoring jobs right now</p>
-                        </div>
-                        <button className="btn btn-ghost text-sm" onClick={() => setView('jobs')}>
-                          View all →
-                        </button>
+                  <section>
+                    <div className="mb-3 flex items-center justify-between">
+                      <div>
+                        <h2 className="card-title flex items-center gap-1.5">
+                          <span style={{ color: token('danger') }}>
+                            <Icon name="flame" size={18} />
+                          </span>
+                          Top opportunities
+                        </h2>
+                        <p className="card-sub">Highest-scoring jobs right now</p>
                       </div>
-                      <JobList
-                        jobs={topOpps}
-                        liveIds={liveIds}
-                        savedIds={saved}
-                        onToggleSave={toggleSave}
-                        onOpen={setSelected}
-                        loading={loading}
-                      />
-                    </section>
-                  </div>
+                      <button className="btn btn-ghost text-sm" onClick={() => setView('jobs')}>
+                        View all →
+                      </button>
+                    </div>
+                    <JobList
+                      jobs={topOpps}
+                      liveIds={liveIds}
+                      savedIds={saved}
+                      onToggleSave={toggleSave}
+                      onOpen={setSelected}
+                      loading={loading}
+                    />
+                  </section>
                 </div>
               )}
 

@@ -22,7 +22,10 @@ SELECTORS = {
     'client_country': 'div.project-author > span.country > span.country-name > a',  # Country name is in anchor tag inside country-name span
     'client_rating': 'div.project-author > span.rating > span.profile-stars > span.stars-bg',  # title attribute is on stars-bg
     'client_payment_verified': 'div.project-author > span.payment > span.payment-verified',
-    'client_last_reply': 'div.project-author > span.message-created > span',
+    # message-created holds "<span>Last reply:</span> <span>7 hours ago</span>";
+    # select the container and split on ':' to get the time (only present when
+    # the client has replied to a bid — new projects omit it entirely).
+    'client_last_reply': 'div.project-author > span.message-created',
     
     # Pagination
     'pagination': 'nav.text-center > ul.pagination',

@@ -132,6 +132,9 @@ export default function JobCard({ job, isNew, isSaved, onToggleSave, onOpen }: J
           <span className="chip">💳 {job.client_paid_projects} paid</span>
         )}
         {joined && <span className="chip">📆 {joined}</span>}
+        {job.client_last_reply && (
+          <span className="chip">💬 Last reply: {job.client_last_reply}</span>
+        )}
       </div>
 
       {/* AI summary */}
