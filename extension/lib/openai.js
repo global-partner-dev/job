@@ -33,17 +33,20 @@ export function normalizeProposalText(text) {
     .trim();
 }
 
-/** @param {{ apiKey: string, model: string, systemPrompt: string, freelancerName: string, project: object }} opts */
-export async function generateProposal({ apiKey, model, systemPrompt, freelancerName, project }) {
+/** @param {{ apiKey: string, model: string, systemPrompt: string, portfolioUrl?: string, project: object }} opts */
+export async function generateProposal({ apiKey, model, systemPrompt, portfolioUrl, project }) {
   const displayName = (project.clientName || '').trim();
   const firstName = clientFirstName(displayName);
   const userContent = [
-    `Your freelancer name: ${freelancerName || 'Unknown'}`,
     `Client first name (the ONLY name you may use for the client): ${firstName}`,
     `Project title: ${project.title}`,
     `Budget: ${project.budget}`,
     `Country: ${project.country}`,
     `Skills: ${(project.skills || []).join(', ')}`,
+    portfolioUrl
+      ? `Portfolio link to reference naturally, exactly once: ${portfolioUrl}`
+      : 'No portfolio link provided — do not invent or mention one.',
+    'IMPORTANT: never reveal, invent, or sign your own name.',
     '',
     'Description:',
     project.description,

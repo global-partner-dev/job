@@ -56,7 +56,34 @@ export interface JobScore {
 /** A job augmented with its computed opportunity score. */
 export type ScoredJob = Job & { scoring: JobScore }
 
-export type View = 'dashboard' | 'jobs' | 'saved'
+export type View = 'dashboard' | 'jobs' | 'saved' | 'admin'
+
+export type UserRole = 'user' | 'admin'
+export type UserStatus = 'pending' | 'approved' | 'rejected'
+
+export interface Profile {
+  id: string
+  email: string | null
+  full_name: string | null
+  role: UserRole
+  status: UserStatus
+  created_at: string
+}
+
+/** One row of the `bids` table (per-user bid record / lock). */
+export interface Bid {
+  id: string
+  user_id: string
+  job_id: string
+  status: 'locked' | 'placing' | 'placed' | 'manual' | 'failed' | 'skipped'
+  amount: number | null
+  delivery_time: string | null
+  proposal: string | null
+  bid_url: string | null
+  error: string | null
+  created_at: string
+  updated_at: string
+}
 
 export type SortKey = 'newest' | 'score' | 'fewest_bids' | 'budget' | 'rating'
 

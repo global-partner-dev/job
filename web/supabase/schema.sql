@@ -1,9 +1,12 @@
 -- ============================================================================
 -- Workana Job Scraper — Supabase schema
 -- ----------------------------------------------------------------------------
--- Run this once in the Supabase SQL Editor (Dashboard → SQL → New query).
+-- Run this in the Supabase SQL Editor (Dashboard → SQL → New query), THEN run
+-- 02_auth_multiuser.sql.
 -- The scraper writes with the service-role key (bypasses RLS).
--- The React web app reads with the anon key under the read-only policies below.
+-- Read access for the web app is defined in 02_auth_multiuser.sql (approved,
+-- authenticated users only). This file grants NO anon/public read — re-running
+-- it is fail-closed.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -82,19 +85,14 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- Row Level Security — anon key gets read-only access; writes need service role
+-- Row Level Security — deny by default. Read policies for jobs / scrape_history
+-- are defined in 02_auth_multiuser.sql (approved authenticated users only). The
+-- scraper writes with the service_role key, which bypasses RLS. Re-running this
+-- file must NEVER re-open anon read, so here we only DROP any legacy public
+-- policies (no-op if already gone) and never (re)create an anon-readable one.
 -- ---------------------------------------------------------------------------
 alter table public.jobs           enable row level security;
 alter table public.scrape_history enable row level security;
 
 drop policy if exists "public read jobs" on public.jobs;
-create policy "public read jobs"
-    on public.jobs for select
-    to anon, authenticated
-    using (true);
-
 drop policy if exists "public read scrape_history" on public.scrape_history;
-create policy "public read scrape_history"
-    on public.scrape_history for select
-    to anon, authenticated
-    using (true);

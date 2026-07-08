@@ -1,8 +1,8 @@
-import type { KeyboardEvent, MouseEvent } from 'react'
-import type { ScoredJob } from '../types'
+import type { ChangeEvent, KeyboardEvent, MouseEvent } from 'react'
+import type { Bid, ScoredJob } from '../types'
 import { timeAgo, joinedLabel, skillsOf, bestTitle } from '../lib/format'
 import { flagFor } from '../lib/flags'
-import { token } from '../lib/palette'
+import { token, type PaletteToken } from '../lib/palette'
 import ScoreBadge from './ScoreBadge'
 import AiSummary from './AiSummary'
 
@@ -12,9 +12,32 @@ interface JobCardProps {
   isSaved: boolean
   onToggleSave: (id: string) => void
   onOpen: (job: ScoredJob) => void
+  selectable?: boolean
+  selected?: boolean
+  onToggleSelect?: (id: string) => void
+  bidStatus?: Bid['status']
 }
 
-export default function JobCard({ job, isNew, isSaved, onToggleSave, onOpen }: JobCardProps) {
+const BID_STATUS: Record<Bid['status'], { label: string; tone: PaletteToken }> = {
+  locked: { label: 'Queued', tone: 'warning' },
+  placing: { label: 'Placing…', tone: 'info' },
+  placed: { label: '✓ Bid placed', tone: 'success' },
+  manual: { label: 'Prepared', tone: 'info' },
+  failed: { label: 'Bid failed', tone: 'danger' },
+  skipped: { label: 'Skipped', tone: 'low' },
+}
+
+export default function JobCard({
+  job,
+  isNew,
+  isSaved,
+  onToggleSave,
+  onOpen,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
+  bidStatus,
+}: JobCardProps) {
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     // Only react to keys on the card itself, not on the nested Save button.
     if (e.target !== e.currentTarget) return
@@ -27,6 +50,11 @@ export default function JobCard({ job, isNew, isSaved, onToggleSave, onOpen }: J
     e.stopPropagation()
     onToggleSave(job.id)
   }
+  const handleSelect = (e: ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation()
+    onToggleSelect?.(job.id)
+  }
+  const status = bidStatus ? BID_STATUS[bidStatus] : null
 
   const country = job.client_country || 'Unknown'
   const rating = job.client_rating != null ? job.client_rating.toFixed(1) : null
@@ -54,7 +82,8 @@ export default function JobCard({ job, isNew, isSaved, onToggleSave, onOpen }: J
       className={
         'card group relative flex cursor-pointer flex-col gap-3 overflow-hidden p-4 pl-5 transition-all ' +
         'hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-card-hover animate-fade-in' +
-        (isNew ? ' ring-1 ring-primary/40' : '')
+        (isNew ? ' ring-1 ring-primary/40' : '') +
+        (selected ? ' ring-2 ring-primary' : '')
       }
     >
       {/* Tier accent strip */}
@@ -66,21 +95,41 @@ export default function JobCard({ job, isNew, isSaved, onToggleSave, onOpen }: J
 
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <ScoreBadge scoring={job.scoring} size="sm" />
-            {isNew && (
-              <span
-                className="pill animate-pulse-ring"
-                style={{ backgroundColor: token('primary', 0.16), color: token('primary') }}
-              >
-                NEW
-              </span>
-            )}
+        <div className="flex min-w-0 items-start gap-2">
+          {selectable && (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={handleSelect}
+              onClick={(e) => e.stopPropagation()}
+              className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-primary"
+              aria-label="Select for bidding"
+            />
+          )}
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <ScoreBadge scoring={job.scoring} size="sm" />
+              {isNew && (
+                <span
+                  className="pill animate-pulse-ring"
+                  style={{ backgroundColor: token('primary', 0.16), color: token('primary') }}
+                >
+                  NEW
+                </span>
+              )}
+              {status && (
+                <span
+                  className="pill"
+                  style={{ backgroundColor: token(status.tone, 0.16), color: token(status.tone) }}
+                >
+                  {status.label}
+                </span>
+              )}
+            </div>
+            <h3 className="text-[15px] font-semibold leading-snug text-content line-clamp-2">
+              {bestTitle(job)}
+            </h3>
           </div>
-          <h3 className="text-[15px] font-semibold leading-snug text-content line-clamp-2">
-            {bestTitle(job)}
-          </h3>
         </div>
 
         <button

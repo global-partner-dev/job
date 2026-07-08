@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "Workana Auto Bid Bot",
-  "version": "1.1.0",
-  "description": "Monitors workana-bot dashboard and places full Workana bids (proposal + amount + delivery) via OpenAI.",
-  "permissions": ["storage", "alarms", "notifications", "cookies", "tabs"],
+  "name": "Workana Radar BidBot",
+  "version": "2.0.0",
+  "description": "Places Workana bids (proposal + OpenAI-computed price + delivery) for projects you select in the Workana Radar dashboard.",
+  "permissions": ["storage", "cookies", "tabs"],
   "host_permissions": [
-    "https://workana-bot.fly.dev/*",
     "https://www.workana.com/*",
-    "https://api.openai.com/*"
+    "https://api.openai.com/*",
+    "https://*.supabase.co/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -15,13 +15,16 @@
   },
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Workana Auto Bid Bot"
+    "default_title": "Workana Radar BidBot"
   },
   "content_scripts": [
     {
-      "matches": ["https://workana-bot.fly.dev/*"],
-      "js": ["content/dashboard.js"],
-      "css": ["content/dashboard.css"],
+      "matches": [
+        "http://localhost:*/*",
+        "http://127.0.0.1:*/*",
+        "https://job-six-nu.vercel.app/*"
+      ],
+      "js": ["content/bridge.js"],
       "run_at": "document_idle"
     },
     {
@@ -33,7 +36,7 @@
         "https://www.workana.com/es/inbox/*",
         "https://www.workana.com/pt/inbox/*"
       ],
-      "js": ["content/workana-bid.js"],
+      "js": ["content/workana-bid.js", "content/workana-fill.js"],
       "run_at": "document_idle"
     }
   ],

@@ -1,16 +1,21 @@
-import type { ScoredJob } from '../types';
-import JobCard from './JobCard';
+import type { Bid, ScoredJob } from '../types'
+import JobCard from './JobCard'
 
 interface JobListProps {
-  jobs: ScoredJob[];
-  liveIds: Set<string>;
-  savedIds: Set<string>;
-  onToggleSave: (id: string) => void;
-  onOpen: (job: ScoredJob) => void;
-  loading: boolean;
+  jobs: ScoredJob[]
+  liveIds: Set<string>
+  savedIds: Set<string>
+  onToggleSave: (id: string) => void
+  onOpen: (job: ScoredJob) => void
+  loading: boolean
+  // BidBot selection (optional)
+  selectable?: boolean
+  selectedIds?: Set<string>
+  onToggleSelect?: (id: string) => void
+  bidStatuses?: Map<string, Bid>
 }
 
-const SKELETON_KEYS = ['s0', 's1', 's2', 's3', 's4', 's5'];
+const SKELETON_KEYS = ['s0', 's1', 's2', 's3', 's4', 's5']
 
 export default function JobList({
   jobs,
@@ -19,6 +24,10 @@ export default function JobList({
   onToggleSave,
   onOpen,
   loading,
+  selectable = false,
+  selectedIds,
+  onToggleSelect,
+  bidStatuses,
 }: JobListProps) {
   if (loading && jobs.length === 0) {
     return (
@@ -32,7 +41,7 @@ export default function JobList({
           </div>
         ))}
       </div>
-    );
+    )
   }
 
   if (jobs.length === 0) {
@@ -46,7 +55,7 @@ export default function JobList({
           Try clearing filters or lowering the minimum score.
         </div>
       </div>
-    );
+    )
   }
 
   return (
@@ -59,8 +68,12 @@ export default function JobList({
           isSaved={savedIds.has(job.id)}
           onToggleSave={onToggleSave}
           onOpen={onOpen}
+          selectable={selectable}
+          selected={selectedIds?.has(job.id) ?? false}
+          onToggleSelect={onToggleSelect}
+          bidStatus={bidStatuses?.get(job.id)?.status}
         />
       ))}
     </div>
-  );
+  )
 }
