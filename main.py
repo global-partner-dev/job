@@ -9,18 +9,17 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config.settings import (
     DEFAULT_CATEGORY, DEFAULT_LANGUAGE, MAX_PAGES,
     SUPABASE_URL, SUPABASE_SERVICE_KEY,
-    GOOGLE_TRANSLATE_API_KEY, OPENAI_API_KEY, OPENAI_MODEL,
+    OPENAI_API_KEY, OPENAI_MODEL,
     SCRAPE_INTERVAL,
 )
 from storage.supabase_store import SupabaseJobStore
 from scrapers.workana_scraper import WorkanaScraper
 from parsers.client_stats import enrich_job_with_client_stats
 from utils.enrichment import enrich_job_with_ai
-from utils.translator import GoogleTranslator
 from utils.openai_summarizer import OpenAISummarizer
 
 
-def run_scrape(db, scraper, translator, summarizer):
+def run_scrape(db, scraper, summarizer):
     start_time = time.time()
     scrape_failed = False
 
@@ -69,11 +68,11 @@ def run_scrape(db, scraper, translator, summarizer):
                         f"Joined: {joined_month if joined_month is not None else '?'}-{joined if joined is not None else '?'}"
                     )
 
-            # Enrich new jobs with English translation + AI analysis for the web app.
-            if translator or summarizer:
-                print("Adding translations + AI analysis...")
+            # Enrich new jobs with the English AI analysis for the web app.
+            if summarizer:
+                print("Adding AI analysis...")
                 for i, job in enumerate(new_scraped, 1):
-                    enrich_job_with_ai(job, translator=translator, summarizer=summarizer)
+                    enrich_job_with_ai(job, summarizer=summarizer)
                     if job.get('ai_summary'):
                         print(f"   [{i}/{len(new_scraped)}] AI analysis ready: {(job.get('title') or 'Unknown')[:40]}...")
 
@@ -128,7 +127,7 @@ def main():
     else:
         print("▶️  Running once")
 
-    print("\n[1/4] Connecting to Supabase...")
+    print("\n[1/3] Connecting to Supabase...")
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
         print("❌ SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in .env")
         print("   Create a project at https://supabase.com, run web/supabase/schema.sql,")
@@ -144,31 +143,19 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    translator = None
-    try:
-        translator = GoogleTranslator(api_key=GOOGLE_TRANSLATE_API_KEY)
-        if translator.is_available():
-            print("[2/4] Google Translate initialized ✅")
-        else:
-            print("[2/4] Google Translate disabled (no API key)")
-            translator = None
-    except Exception as e:
-        print(f"[2/4] Google Translate error: {e}")
-        translator = None
-
     summarizer = None
     try:
         summarizer = OpenAISummarizer(api_key=OPENAI_API_KEY, model=OPENAI_MODEL)
         if summarizer.is_available():
-            print(f"[3/4] OpenAI summarizer initialized ✅ ({OPENAI_MODEL})")
+            print(f"[2/3] OpenAI summarizer initialized ✅ ({OPENAI_MODEL})")
         else:
-            print("[3/4] OpenAI summarizer disabled (no API key)")
+            print("[2/3] OpenAI summarizer disabled (no API key)")
             summarizer = None
     except Exception as e:
-        print(f"[3/4] OpenAI summarizer error: {e}")
+        print(f"[2/3] OpenAI summarizer error: {e}")
         summarizer = None
 
-    print("[4/4] Initializing scraper...")
+    print("[3/3] Initializing scraper...")
     scraper = WorkanaScraper()
     try:
         scraper.setup_driver()
@@ -191,7 +178,7 @@ def main():
                 print(f"Run #{run_count}")
                 print(f"{'='*60}")
 
-                run_scrape(db, scraper, translator, summarizer)
+                run_scrape(db, scraper, summarizer)
 
                 if scraper.last_load_failed:
                     try:
@@ -206,7 +193,7 @@ def main():
 
                 time.sleep(SCRAPE_INTERVAL)
         else:
-            run_scrape(db, scraper, translator, summarizer)
+            run_scrape(db, scraper, summarizer)
             print("\n✅ Scraping complete!")
 
     except KeyboardInterrupt:

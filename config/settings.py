@@ -67,10 +67,6 @@ if HEADLESS:
 LOG_LEVEL = "INFO"
 LOG_FILE = BASE_DIR / 'scraper.log'
 
-# Google Translate API (translates job content to English before storing)
-# Enable Cloud Translation API in Google Cloud Console and create an API key
-GOOGLE_TRANSLATE_API_KEY = os.getenv('GOOGLE_TRANSLATE_API_KEY', '').strip()
-
 # OpenAI API for the AI analysis summary from full title + description
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '').strip()
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini').strip()
