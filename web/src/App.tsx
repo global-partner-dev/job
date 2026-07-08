@@ -80,7 +80,7 @@ function AppShell() {
   const { jobs, loading, error, liveIds, refresh } = useJobs()
   const { saved, toggle: toggleSave } = useSavedJobs()
   const { profile, isAdmin, signOut, session } = useAuth()
-  const { byJob: bidsByJob, lockJobs } = useBids()
+  const { byJob: bidsByJob, lockJobs, deleteBids } = useBids()
   const bidbot = useBidBot()
 
   const [view, setView] = useState<View>('dashboard')
@@ -91,6 +91,9 @@ function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [autoRunning, setAutoRunning] = useState(false)
   const batchInFlight = useRef(false)
+  // Jobs already sent during the CURRENT full-auto session (so a failed/stuck
+  // job isn't retried in an endless loop; reset each time auto-bidding starts).
+  const autoSentRef = useRef<Set<string>>(new Set())
 
   const auth = useMemo(
     () =>
@@ -134,9 +137,9 @@ function AppShell() {
   const handleStartBidding = async () => {
     if (!auth) return
     const chosen = scored.filter((j) => selectedIds.has(j.id))
-    // Only bid jobs the user hasn't already locked/bid — mirrors lockJobs' dedup
-    // and prevents re-sending already-bid projects to the extension.
-    const toBid = chosen.filter((j) => !bidsByJob.has(j.id))
+    // Skip only jobs already PLACED — 'locked'/'placing'/'failed' are retryable
+    // (e.g. after a dropped connection left them stuck).
+    const toBid = chosen.filter((j) => bidsByJob.get(j.id)?.status !== 'placed')
     if (toBid.length === 0) {
       clearSelect()
       return
@@ -155,9 +158,12 @@ function AppShell() {
   )
 
   // --- Fully automated bidding -----------------------------------------------
-  // Jobs matching the current feed filters that this user hasn't bid on yet.
+  // Filter-matching jobs not yet PLACED and not already tried this auto session.
   const eligibleAuto = useMemo(
-    () => visible.filter((j) => !bidsByJob.has(j.id)),
+    () =>
+      visible.filter(
+        (j) => bidsByJob.get(j.id)?.status !== 'placed' && !autoSentRef.current.has(j.id),
+      ),
     [visible, bidsByJob],
   )
 
@@ -171,11 +177,23 @@ function AppShell() {
     }
   }
 
+  const placedCount = useMemo(
+    () => [...bidsByJob.values()].filter((b) => b.status === 'placed').length,
+    [bidsByJob],
+  )
+
+  const handleDeletePlaced = async () => {
+    if (placedCount === 0) return
+    if (!window.confirm(`Delete ${placedCount} already-bid project(s) from your bid list?`)) return
+    await deleteBids(['placed'])
+  }
+
   const toggleAuto = () => {
     if (autoRunning) {
       setAutoRunning(false)
       bidbot.stop()
     } else {
+      autoSentRef.current = new Set() // fresh session — allow retrying stuck jobs
       setAutoRunning(true)
     }
   }
@@ -196,6 +214,7 @@ function AppShell() {
     }
     const batch = eligibleAuto.slice(0, AUTO_BATCH)
     if (batch.length === 0) return
+    batch.forEach((j) => autoSentRef.current.add(j.id)) // mark attempted this session
     batchInFlight.current = true
     lockJobs(batch.map((j) => j.id))
       .then(() => bidbot.begin(batch.map(jobToBidJob), auth))
@@ -367,6 +386,8 @@ function AppShell() {
         settings={bidbot.settings}
         onChange={bidbot.setSettings}
         onClose={() => setSettingsOpen(false)}
+        placedCount={placedCount}
+        onDeletePlaced={handleDeletePlaced}
       />
     </div>
   )

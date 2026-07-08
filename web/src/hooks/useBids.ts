@@ -9,6 +9,8 @@ interface UseBidsResult {
   loading: boolean
   /** Insert a 'locked' bid for each job the user hasn't already bid. Returns count newly locked. */
   lockJobs: (jobIds: string[]) => Promise<{ locked: number; skipped: number; error?: string }>
+  /** Delete the user's bid rows with any of the given statuses. Returns count deleted. */
+  deleteBids: (statuses: Bid['status'][]) => Promise<number>
   refetch: () => void
 }
 
@@ -99,5 +101,29 @@ export function useBids(): UseBidsResult {
     [userId, byJob],
   )
 
-  return { byJob, loading, lockJobs, refetch }
+  const deleteBids = useCallback(
+    async (statuses: Bid['status'][]) => {
+      if (!userId || statuses.length === 0) return 0
+      const victims = [...byJob.values()].filter((b) => statuses.includes(b.status))
+      if (victims.length === 0) return 0
+      const { error } = await supabase
+        .from('bids')
+        .delete()
+        .eq('user_id', userId)
+        .in('status', statuses)
+      if (error) {
+        console.warn('[bids] delete failed:', error.message)
+        return 0
+      }
+      setByJob((prev) => {
+        const next = new Map(prev)
+        for (const [jobId, b] of prev) if (statuses.includes(b.status)) next.delete(jobId)
+        return next
+      })
+      return victims.length
+    },
+    [userId, byJob],
+  )
+
+  return { byJob, loading, lockJobs, deleteBids, refetch }
 }

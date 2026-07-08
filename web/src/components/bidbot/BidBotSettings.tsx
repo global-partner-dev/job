@@ -7,9 +7,18 @@ interface Props {
   settings: BidBotSettings
   onChange: (s: BidBotSettings) => void
   onClose: () => void
+  placedCount: number
+  onDeletePlaced: () => void
 }
 
-export default function BidBotSettings({ open, settings, onChange, onClose }: Props) {
+export default function BidBotSettings({
+  open,
+  settings,
+  onChange,
+  onClose,
+  placedCount,
+  onDeletePlaced,
+}: Props) {
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -208,6 +217,22 @@ export default function BidBotSettings({ open, settings, onChange, onClose }: Pr
               value={settings.systemPrompt}
               onChange={(e) => set('systemPrompt', e.target.value)}
             />
+          </section>
+
+          <section className="space-y-2 border-t border-border/60 pt-4">
+            <h3 className="stat-label">Maintenance</h3>
+            <button
+              className="btn w-full"
+              onClick={onDeletePlaced}
+              disabled={placedCount === 0}
+              style={placedCount > 0 ? { color: 'rgb(var(--danger))', borderColor: 'rgb(var(--danger) / 0.4)' } : undefined}
+            >
+              🗑 Delete already-bid projects{placedCount ? ` (${placedCount})` : ''}
+            </button>
+            <p className="text-[11px] text-subtle">
+              Clears the “Bid placed” records for projects you've already bid on, removing them
+              from your bid list. It does not touch your bids on Workana.
+            </p>
           </section>
         </div>
       </aside>
