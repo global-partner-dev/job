@@ -15,7 +15,9 @@ export interface BidBotSettings {
   model: string
   freelancerSlug: string
   portfolioUrl: string
-  submitMode: 'auto' | 'manual'
+  // manual = open + prefill (you click Place bid) · auto = auto-submit selected
+  // full = fully automated: continuously bids on all jobs matching feed filters
+  submitMode: 'manual' | 'auto' | 'full'
   genDelayMinSec: number
   genDelayMaxSec: number
   gapDelayMinSec: number

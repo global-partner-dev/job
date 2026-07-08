@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useJobs } from './hooks/useJobs'
 import { useSavedJobs } from './hooks/useSavedJobs'
 import { useTheme } from './hooks/useTheme'
@@ -89,6 +89,21 @@ function AppShell() {
   const [selected, setSelected] = useState<ScoredJob | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [autoRunning, setAutoRunning] = useState(false)
+  const batchInFlight = useRef(false)
+
+  const auth = useMemo(
+    () =>
+      session
+        ? {
+            supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+            anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            accessToken: session.access_token,
+            userId: session.user.id,
+          }
+        : null,
+    [session],
+  )
 
   const scored = useMemo<ScoredJob[]>(() => jobs.map(withScore), [jobs])
   const stats = useMemo(() => computeStats(scored), [scored])
@@ -117,7 +132,7 @@ function AppShell() {
   const clearSelect = () => setSelectedIds(new Set())
 
   const handleStartBidding = async () => {
-    if (!session) return
+    if (!auth) return
     const chosen = scored.filter((j) => selectedIds.has(j.id))
     // Only bid jobs the user hasn't already locked/bid — mirrors lockJobs' dedup
     // and prevents re-sending already-bid projects to the extension.
@@ -127,12 +142,7 @@ function AppShell() {
       return
     }
     await lockJobs(toBid.map((j) => j.id))
-    bidbot.begin(toBid.map(jobToBidJob), {
-      supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-      anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-      accessToken: session.access_token,
-      userId: session.user.id,
-    })
+    bidbot.begin(toBid.map(jobToBidJob), auth)
     clearSelect()
   }
 
@@ -143,6 +153,57 @@ function AppShell() {
       ).length,
     [bidbot.progress],
   )
+
+  // --- Fully automated bidding -----------------------------------------------
+  // Jobs matching the current feed filters that this user hasn't bid on yet.
+  const eligibleAuto = useMemo(
+    () => visible.filter((j) => !bidsByJob.has(j.id)),
+    [visible, bidsByJob],
+  )
+
+  const cycleMode = () => {
+    const order = ['manual', 'auto', 'full'] as const
+    const next = order[(order.indexOf(bidbot.settings.submitMode) + 1) % order.length]
+    bidbot.setSettings({ ...bidbot.settings, submitMode: next })
+    if (next !== 'full' && autoRunning) {
+      setAutoRunning(false)
+      bidbot.stop()
+    }
+  }
+
+  const toggleAuto = () => {
+    if (autoRunning) {
+      setAutoRunning(false)
+      bidbot.stop()
+    } else {
+      setAutoRunning(true)
+    }
+  }
+
+  // Reactive loop: while full-auto is on and the extension is idle, lock + send
+  // the next batch of eligible jobs. Re-fires when a batch finishes or new
+  // matching jobs arrive (realtime).
+  const AUTO_BATCH = 20
+  useEffect(() => {
+    if (
+      bidbot.settings.submitMode !== 'full' ||
+      !autoRunning ||
+      bidbot.running ||
+      batchInFlight.current ||
+      !auth
+    ) {
+      return
+    }
+    const batch = eligibleAuto.slice(0, AUTO_BATCH)
+    if (batch.length === 0) return
+    batchInFlight.current = true
+    lockJobs(batch.map((j) => j.id))
+      .then(() => bidbot.begin(batch.map(jobToBidJob), auth))
+      .finally(() => {
+        batchInFlight.current = false
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRunning, bidbot.running, bidbot.settings.submitMode, eligibleAuto, auth])
 
   // Guard: non-admins can never land on the admin view.
   const activeView: View = view === 'admin' && !isAdmin ? 'dashboard' : view
@@ -284,22 +345,20 @@ function AppShell() {
 
       {selectable && (
         <BidBotBar
+          mode={bidbot.settings.submitMode}
           selectedCount={selectedIds.size}
           running={bidbot.running}
           extPresent={bidbot.extPresent}
-          submitMode={bidbot.settings.submitMode}
           progressDone={progressDone}
           summary={bidbot.summary}
-          onToggleMode={() =>
-            bidbot.setSettings({
-              ...bidbot.settings,
-              submitMode: bidbot.settings.submitMode === 'auto' ? 'manual' : 'auto',
-            })
-          }
+          autoRunning={autoRunning}
+          autoEligibleCount={eligibleAuto.length}
+          onCycleMode={cycleMode}
           onOpenSettings={() => setSettingsOpen(true)}
           onClear={clearSelect}
           onStart={handleStartBidding}
           onStop={bidbot.stop}
+          onToggleAuto={toggleAuto}
         />
       )}
 

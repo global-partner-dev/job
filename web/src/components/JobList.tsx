@@ -72,7 +72,6 @@ export default function JobList({
             isNew={liveIds.has(job.id)}
             isSaved={savedIds.has(job.id)}
             onToggleSave={onToggleSave}
-            onOpen={onOpen}
             selectable={selectable}
             selected={selectedIds?.has(job.id) ?? false}
             onToggleSelect={onToggleSelect}

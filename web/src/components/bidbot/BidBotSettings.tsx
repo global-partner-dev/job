@@ -99,21 +99,29 @@ export default function BidBotSettings({ open, settings, onChange, onClose }: Pr
           <section className="space-y-3">
             <h3 className="stat-label">Bidding mode</h3>
             <div className="flex gap-2">
-              {(['auto', 'manual'] as const).map((m) => (
+              {(['manual', 'auto', 'full'] as const).map((m) => (
                 <button
                   key={m}
-                  className={'btn flex-1 ' + (settings.submitMode === m ? 'btn-primary' : '')}
+                  className={'btn flex-1 text-xs ' + (settings.submitMode === m ? 'btn-primary' : '')}
                   onClick={() => set('submitMode', m)}
                 >
-                  {m === 'auto' ? 'Automated' : 'Manual'}
+                  {m === 'manual' ? 'Manual' : m === 'auto' ? 'Automated' : 'Fully auto'}
                 </button>
               ))}
             </div>
             <p className="text-[11px] text-subtle">
-              {settings.submitMode === 'auto'
-                ? 'Automated: the extension places each bid for you.'
-                : 'Manual: the extension opens each bid pre-filled — you click “Place bid”.'}
+              {settings.submitMode === 'manual'
+                ? 'Manual: opens each SELECTED bid pre-filled — you click “Place bid”.'
+                : settings.submitMode === 'auto'
+                  ? 'Automated: places each SELECTED bid for you.'
+                  : 'Fully automated: no selection — continuously places bids on EVERY job matching your current feed filters, including new ones as they arrive.'}
             </p>
+            {settings.submitMode === 'full' && (
+              <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-[11px] text-danger">
+                ⚠️ Fully automated bids without review and can consume your Workana bid credits fast.
+                Set tight feed filters (budget, last-reply, country, min score) before starting.
+              </p>
+            )}
           </section>
 
           <section className="space-y-3">
