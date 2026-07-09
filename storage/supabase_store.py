@@ -140,6 +140,14 @@ class SupabaseJobStore:
         is_new = job_id not in self._existing_ids
         record = self._to_record(job_data, is_new)
 
+        if not is_new:
+            # Re-scrapes only carry the truncated LISTING title/description, so
+            # never overwrite the full detail-page content (or the AI fields) we
+            # stored when the job was first seen and enriched. Volatile listing
+            # fields (bids, budget, last reply, timestamps) still update.
+            for field in ("title", "description", "title_en", "description_en", "ai_summary"):
+                record.pop(field, None)
+
         self.client.table(self.JOBS_TABLE).upsert(record).execute()
         self._existing_ids.add(job_id)
         return is_new
