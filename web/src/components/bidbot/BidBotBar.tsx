@@ -19,6 +19,7 @@ interface Props {
   onStart: () => void
   onStop: () => void
   onToggleAuto: () => void
+  onDeleteSelected: () => void
 }
 
 const MODE_LABEL: Record<Mode, string> = {
@@ -132,6 +133,21 @@ export default function BidBotBar(props: Props) {
       {!running && (
         <button className="btn btn-ghost text-sm" onClick={props.onClear}>
           Clear
+        </button>
+      )}
+      {!running && (
+        <button
+          className="btn text-sm"
+          onClick={props.onDeleteSelected}
+          disabled={props.selectedCount === 0}
+          style={
+            props.selectedCount > 0
+              ? { color: token('danger'), borderColor: token('danger', 0.4) }
+              : undefined
+          }
+          title="Remove the selected projects from your feed"
+        >
+          🗑 Delete
         </button>
       )}
       {running ? (

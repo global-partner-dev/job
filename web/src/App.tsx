@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useJobs } from './hooks/useJobs'
 import { useSavedJobs } from './hooks/useSavedJobs'
+import { useDismissedJobs } from './hooks/useDismissedJobs'
 import { useTheme } from './hooks/useTheme'
 import { useAuth } from './hooks/useAuth'
 import { useBids } from './hooks/useBids'
@@ -79,6 +80,7 @@ function AppShell() {
   const { theme, toggle: toggleTheme } = useTheme()
   const { jobs, loading, error, liveIds, refresh } = useJobs()
   const { saved, toggle: toggleSave } = useSavedJobs()
+  const { dismissed, dismiss } = useDismissedJobs()
   const { profile, isAdmin, signOut, session } = useAuth()
   const { byJob: bidsByJob, lockJobs, deleteBids } = useBids()
   const bidbot = useBidBot()
@@ -108,7 +110,11 @@ function AppShell() {
     [session],
   )
 
-  const scored = useMemo<ScoredJob[]>(() => jobs.map(withScore), [jobs])
+  // Exclude jobs the user has deleted from their feed (per-user, everywhere).
+  const scored = useMemo<ScoredJob[]>(
+    () => jobs.filter((j) => !dismissed.has(j.id)).map(withScore),
+    [jobs, dismissed],
+  )
   const stats = useMemo(() => computeStats(scored), [scored])
   const countries = useMemo(() => uniqueCountries(scored), [scored])
   const visible = useMemo(() => applyFilters(scored, filters, saved), [scored, filters, saved])
@@ -133,6 +139,13 @@ function AppShell() {
       return next
     })
   const clearSelect = () => setSelectedIds(new Set())
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.size === 0) return
+    if (!window.confirm(`Remove ${selectedIds.size} selected project(s) from your feed?`)) return
+    dismiss([...selectedIds])
+    clearSelect()
+  }
 
   const handleStartBidding = async () => {
     if (!auth) return
@@ -378,6 +391,7 @@ function AppShell() {
           onStart={handleStartBidding}
           onStop={bidbot.stop}
           onToggleAuto={toggleAuto}
+          onDeleteSelected={handleDeleteSelected}
         />
       )}
 
