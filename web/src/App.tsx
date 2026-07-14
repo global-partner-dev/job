@@ -12,7 +12,7 @@ import { jobMeetsMinBudget } from './lib/format'
 import { computeStats } from './lib/stats'
 import { latestJobs } from './lib/insights'
 import { token } from './lib/palette'
-import type { Job, View } from './types'
+import type { Bid, Job, View } from './types'
 
 import Sidebar from './components/layout/Sidebar'
 import Topbar from './components/layout/Topbar'
@@ -62,7 +62,7 @@ function AppShell() {
   const { saved, toggle: toggleSave } = useSavedJobs()
   const { dismissed, dismiss } = useDismissedJobs()
   const { profile, isAdmin, signOut, session } = useAuth()
-  const { byJob: bidsByJob, lockJobs, deleteBids } = useBids()
+  const { byJob: bidsByJob, lockJobs, markBid, deleteBids } = useBids()
   const bidbot = useBidBot()
 
   const [view, setView] = useState<View>('dashboard')
@@ -108,6 +108,30 @@ function AppShell() {
     dismiss([...selectedIds])
     clearSelect()
   }
+
+  // Persist bid status in Supabase from the extension's progress stream, using
+  // the web app's live session — the extension's captured token can expire and
+  // silently fail to write, which left placed bids stuck at "locked".
+  const statusWrittenRef = useRef<Map<string, string>>(new Map())
+  useEffect(() => {
+    const PHASE_TO_STATUS: Partial<Record<string, Bid['status']>> = {
+      submit: 'placing',
+      placed: 'placed',
+      manual: 'manual',
+      failed: 'failed',
+      skipped: 'skipped',
+    }
+    for (const [jobId, p] of bidbot.progress) {
+      const status = PHASE_TO_STATUS[p.phase]
+      if (!status) continue
+      if (statusWrittenRef.current.get(jobId) === status) continue
+      statusWrittenRef.current.set(jobId, status)
+      const patch: Partial<Pick<Bid, 'status' | 'amount' | 'delivery_time'>> = { status }
+      if (p.amount != null) patch.amount = p.amount
+      if (p.deliveryTime != null) patch.delivery_time = p.deliveryTime
+      markBid(jobId, patch)
+    }
+  }, [bidbot.progress, markBid])
 
   const progressDone = useMemo(
     () =>

@@ -9,6 +9,8 @@ interface UseBidsResult {
   loading: boolean
   /** Insert a 'locked' bid for each job the user hasn't already bid. Returns count newly locked. */
   lockJobs: (jobIds: string[]) => Promise<{ locked: number; skipped: number; error?: string }>
+  /** Upsert a bid's status (written by the web app from the extension's progress). */
+  markBid: (jobId: string, patch: Partial<Pick<Bid, 'status' | 'amount' | 'delivery_time'>>) => Promise<void>
   /** Delete the user's bid rows with any of the given statuses. Returns count deleted. */
   deleteBids: (statuses: Bid['status'][]) => Promise<number>
   refetch: () => void
@@ -101,6 +103,43 @@ export function useBids(): UseBidsResult {
     [userId, byJob],
   )
 
+  const markBid = useCallback(
+    async (jobId: string, patch: Partial<Pick<Bid, 'status' | 'amount' | 'delivery_time'>>) => {
+      if (!userId) return
+      // Optimistic local update so the badge is instant + survives refresh.
+      setByJob((prev) => {
+        const next = new Map(prev)
+        const cur = next.get(jobId)
+        if (cur) next.set(jobId, { ...cur, ...patch })
+        else
+          next.set(jobId, {
+            id: '',
+            user_id: userId,
+            job_id: jobId,
+            status: 'locked',
+            amount: null,
+            delivery_time: null,
+            proposal: null,
+            bid_url: null,
+            error: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            ...patch,
+          })
+        return next
+      })
+      // Persist with the web app's live session (no token-expiry problem).
+      const { error } = await supabase
+        .from('bids')
+        .upsert(
+          { user_id: userId, job_id: jobId, ...patch, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id,job_id' },
+        )
+      if (error) console.warn('[bids] markBid failed:', error.message)
+    },
+    [userId],
+  )
+
   const deleteBids = useCallback(
     async (statuses: Bid['status'][]) => {
       if (!userId || statuses.length === 0) return 0
@@ -125,5 +164,5 @@ export function useBids(): UseBidsResult {
     [userId, byJob],
   )
 
-  return { byJob, loading, lockJobs, deleteBids, refetch }
+  return { byJob, loading, lockJobs, markBid, deleteBids, refetch }
 }
