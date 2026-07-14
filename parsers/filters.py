@@ -3,13 +3,13 @@ Archive filters — only projects that pass ALL of these are stored:
 
   1. Country/region: allow only the Americas + Spain & Portugal.
      (All of Asia, Africa, Oceania, and the rest of Europe are excluded.)
-  2. Price: exclude fixed-price projects under $100.
+  2. Price: exclude fixed-price projects under $101.
   3. Client payment ability: exclude clients who posted 2+ projects but have
      paid for none (published >= 2 and paid == 0).
 """
 from typing import Dict, Optional, Tuple
 
-MIN_BUDGET_USD = 100
+MIN_BUDGET_USD = 101  # exclude fixed-price projects under this
 NONPAYER_MIN_PUBLISHED = 2
 
 # Allowed client countries: the whole Americas + Spain & Portugal only.
