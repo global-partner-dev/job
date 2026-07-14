@@ -33,17 +33,6 @@ export interface Job {
   last_seen_at: string | null
 }
 
-export type ScoreTier = 'hot' | 'good' | 'fair' | 'low'
-
-export interface JobScore {
-  score: number // 0–100 opportunity score
-  tier: ScoreTier
-  reasons: string[] // human-readable explanation of the score
-}
-
-/** A job augmented with its computed opportunity score. */
-export type ScoredJob = Job & { scoring: JobScore }
-
 export type View = 'dashboard' | 'jobs' | 'saved' | 'admin'
 
 export type UserRole = 'user' | 'admin'
@@ -71,19 +60,4 @@ export interface Bid {
   error: string | null
   created_at: string
   updated_at: string
-}
-
-export type SortKey = 'newest' | 'score' | 'fewest_bids' | 'budget' | 'rating'
-
-export interface Filters {
-  search: string
-  budgetType: BudgetType | 'all'
-  verifiedOnly: boolean
-  savedOnly: boolean
-  country: string // '' = all
-  minScore: number // 0–100
-  minBudget: number // USD, 0 = no minimum
-  maxBudget: number // USD, 0 = no maximum
-  lastReplyMaxHours: number // client replied within N hours; 0 = any
-  sort: SortKey
 }

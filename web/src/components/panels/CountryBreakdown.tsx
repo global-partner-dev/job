@@ -1,10 +1,10 @@
-import type { ScoredJob } from '../../types'
+import type { Job } from '../../types'
 import { countryBreakdown } from '../../lib/insights'
 import { token } from '../../lib/palette'
 import Icon from '../ui/Icon'
 
 interface CountryBreakdownProps {
-  jobs: ScoredJob[]
+  jobs: Job[]
 }
 
 /** "Top client countries" panel with share bars. */

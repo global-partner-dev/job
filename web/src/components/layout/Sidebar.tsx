@@ -6,7 +6,7 @@ import { token } from '../../lib/palette'
 interface SidebarProps {
   view: View
   onChange: (view: View) => void
-  counts: { jobs: number; saved: number; hot: number }
+  counts: { jobs: number; saved: number }
   open: boolean
   onClose: () => void
   isAdmin: boolean
@@ -122,18 +122,8 @@ export default function Sidebar({
           })}
         </nav>
 
-        {/* Footer: hot-leads callout + account */}
+        {/* Footer: account */}
         <div className="space-y-2 border-t border-white/10 p-3">
-          <div className="rounded-md bg-white/5 p-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-white">
-              <span style={{ color: token('danger') }}><Icon name="flame" size={16} /></span>
-              {counts.hot} hot lead{counts.hot === 1 ? '' : 's'}
-            </div>
-            <div className="mt-0.5 text-[11px] text-sidebar-text">
-              High-opportunity jobs right now
-            </div>
-          </div>
-
           <div className="flex items-center gap-2 rounded-md px-1 py-1">
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs font-medium text-white">{userEmail || 'Account'}</div>

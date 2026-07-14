@@ -69,6 +69,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .getSession()
       .then(async ({ data }) => {
         if (!active) return
+        // Hand the JWT to the realtime socket BEFORE any channel subscribes,
+        // or RLS silently drops realtime events (only manual refresh works).
+        supabase.realtime.setAuth(data.session?.access_token ?? null)
         setSession(data.session)
         await loadProfile(data.session?.user?.id)
       })
@@ -83,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, next) => {
       if (!active) return
+      supabase.realtime.setAuth(next?.access_token ?? null)
       setSession(next)
       await loadProfile(next?.user?.id)
     })

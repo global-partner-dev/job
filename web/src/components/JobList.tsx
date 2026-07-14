@@ -1,17 +1,12 @@
-import type { Bid, ScoredJob } from '../types'
-import JobCard from './JobCard'
+import type { Bid, Job } from '../types'
 import JobRow from './JobRow'
 
 interface JobListProps {
-  jobs: ScoredJob[]
+  jobs: Job[]
   liveIds: Set<string>
   savedIds: Set<string>
   onToggleSave: (id: string) => void
-  onOpen: (job: ScoredJob) => void
   loading: boolean
-  /** 'grid' = tiles (default), 'row' = full-width list rows. */
-  variant?: 'grid' | 'row'
-  // BidBot selection (optional)
   selectable?: boolean
   selectedIds?: Set<string>
   onToggleSelect?: (id: string) => void
@@ -25,9 +20,7 @@ export default function JobList({
   liveIds,
   savedIds,
   onToggleSave,
-  onOpen,
   loading,
-  variant = 'grid',
   selectable = false,
   selectedIds,
   onToggleSelect,
@@ -35,13 +28,11 @@ export default function JobList({
 }: JobListProps) {
   if (loading && jobs.length === 0) {
     return (
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="flex flex-col gap-2">
         {SKELETON_KEYS.map((key) => (
-          <div key={key} className="card p-4 h-40 animate-pulse">
-            <div className="h-4 w-2/3 rounded bg-surface-2" />
-            <div className="mt-3 h-3 w-full rounded bg-surface-2" />
-            <div className="mt-2 h-3 w-5/6 rounded bg-surface-2" />
-            <div className="mt-6 h-3 w-1/3 rounded bg-surface-2" />
+          <div key={key} className="card h-16 animate-pulse p-3">
+            <div className="h-4 w-1/3 rounded bg-surface-2" />
+            <div className="mt-2 h-3 w-2/3 rounded bg-surface-2" />
           </div>
         ))}
       </div>
@@ -50,48 +41,27 @@ export default function JobList({
 
   if (jobs.length === 0) {
     return (
-      <div className="card p-10 text-center text-muted mt-2">
+      <div className="card mt-2 p-10 text-center text-muted">
         <div className="text-3xl" aria-hidden>
           🔍
         </div>
-        <div className="mt-3 text-content font-medium">No jobs match your filters</div>
+        <div className="mt-3 font-medium text-content">No jobs here yet</div>
         <div className="mt-1 text-sm text-subtle">
-          Try clearing filters or lowering the minimum score.
+          The scraper stores only projects that pass the country / price / payer filters.
         </div>
-      </div>
-    )
-  }
-
-  if (variant === 'row') {
-    return (
-      <div className="flex flex-col gap-2">
-        {jobs.map((job) => (
-          <JobRow
-            key={job.id}
-            job={job}
-            isNew={liveIds.has(job.id)}
-            isSaved={savedIds.has(job.id)}
-            onToggleSave={onToggleSave}
-            selectable={selectable}
-            selected={selectedIds?.has(job.id) ?? false}
-            onToggleSelect={onToggleSelect}
-            bidStatus={bidStatuses?.get(job.id)?.status}
-          />
-        ))}
       </div>
     )
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="flex flex-col gap-2">
       {jobs.map((job) => (
-        <JobCard
+        <JobRow
           key={job.id}
           job={job}
           isNew={liveIds.has(job.id)}
           isSaved={savedIds.has(job.id)}
           onToggleSave={onToggleSave}
-          onOpen={onOpen}
           selectable={selectable}
           selected={selectedIds?.has(job.id) ?? false}
           onToggleSelect={onToggleSelect}

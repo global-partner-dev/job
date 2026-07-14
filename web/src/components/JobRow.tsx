@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent, type MouseEvent } from 'react'
-import type { Bid, ScoredJob } from '../types'
+import type { Bid, Job } from '../types'
 import {
   timeAgo,
   bestTitle,
@@ -11,11 +11,10 @@ import {
 } from '../lib/format'
 import { flagFor } from '../lib/flags'
 import { token, type PaletteToken } from '../lib/palette'
-import ScoreBadge from './ScoreBadge'
 import AiSummary from './AiSummary'
 
 interface JobRowProps {
-  job: ScoredJob
+  job: Job
   isNew: boolean
   isSaved: boolean
   onToggleSave: (id: string) => void
@@ -59,7 +58,6 @@ export default function JobRow({
   const rating = job.client_rating != null ? job.client_rating.toFixed(1) : null
   const status = bidStatus ? BID_STATUS[bidStatus] : null
 
-  // Last reply — prominent, colored by recency (recent = engaged client).
   const lrHours = lastReplyHours(job.client_last_reply)
   const lrTone: PaletteToken = lrHours == null ? 'low' : lrHours <= 6 ? 'good' : lrHours <= 24 ? 'fair' : 'low'
 
@@ -86,13 +84,6 @@ export default function JobRow({
         (selected ? ' ring-2 ring-primary' : isNew ? ' ring-1 ring-primary/40' : '')
       }
     >
-      {/* Tier accent strip */}
-      <span
-        className="absolute inset-y-0 left-0 w-1"
-        style={{ backgroundColor: token(job.scoring.tier) }}
-        aria-hidden
-      />
-
       {/* Main row */}
       <div className="flex items-center gap-3 p-3 pl-4">
         {selectable && (
@@ -104,10 +95,6 @@ export default function JobRow({
             aria-label="Select for bidding"
           />
         )}
-
-        <div className="shrink-0">
-          <ScoreBadge scoring={job.scoring} size="sm" />
-        </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -142,10 +129,7 @@ export default function JobRow({
         {/* Last reply — prominent, important signal */}
         <span
           className="pill shrink-0 whitespace-nowrap"
-          style={{
-            backgroundColor: token(lrTone, 0.16),
-            color: token(lrTone),
-          }}
+          style={{ backgroundColor: token(lrTone, 0.16), color: token(lrTone) }}
           title="How long ago the client last replied to a bid"
         >
           💬 {job.client_last_reply ? job.client_last_reply : 'No reply yet'}
@@ -232,12 +216,7 @@ export default function JobRow({
           </div>
 
           {url && (
-            <a
-              className="btn btn-primary text-sm"
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-            >
+            <a className="btn btn-primary text-sm" href={url} target="_blank" rel="noreferrer">
               Open on Workana ↗
             </a>
           )}

@@ -4,9 +4,6 @@ interface TopbarProps {
   live: boolean
   loading: boolean
   theme: 'dark' | 'light'
-  search: string
-  showSearch: boolean
-  onSearch: (value: string) => void
   onToggleTheme: () => void
   onRefresh: () => void
   onOpenMenu: () => void
@@ -18,9 +15,6 @@ export default function Topbar({
   live,
   loading,
   theme,
-  search,
-  showSearch,
-  onSearch,
   onToggleTheme,
   onRefresh,
   onOpenMenu,
@@ -46,25 +40,7 @@ export default function Topbar({
           <p className="hidden truncate text-xs text-subtle sm:block">{subtitle}</p>
         </div>
 
-        {/* Search (dashboard only — other views use the FilterBar search) */}
-        {showSearch && (
-          <div className="relative ml-auto hidden max-w-xs flex-1 md:block">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-subtle">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-            </span>
-            <input
-              className="input pl-9"
-              placeholder="Search jobs, skills, clients…"
-              value={search}
-              onChange={(e) => onSearch(e.target.value)}
-              aria-label="Search"
-            />
-          </div>
-        )}
-
-        <div className={'flex items-center gap-2 ' + (showSearch ? 'ml-auto md:ml-0' : 'ml-auto')}>
+        <div className="ml-auto flex items-center gap-2">
           {/* Live status */}
           <span className="hidden items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 sm:inline-flex">
             <span

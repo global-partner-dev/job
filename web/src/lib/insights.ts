@@ -1,20 +1,12 @@
-import type { ScoredJob, ScoreTier } from '../types'
+import type { Job } from '../types'
 import { flagFor } from './flags'
 import { skillsOf } from './format'
-import { TIER_LABEL } from './scoring'
 
 export interface CountryStat {
   name: string
   flag: string
   count: number
   pct: number // share of total, 0–100
-}
-
-export interface TierStat {
-  tier: ScoreTier
-  label: string
-  count: number
-  pct: number
 }
 
 export interface SkillStat {
@@ -24,7 +16,7 @@ export interface SkillStat {
 }
 
 /** Top countries by job count (with % share of all jobs). */
-export function countryBreakdown(jobs: ScoredJob[], limit = 6): CountryStat[] {
+export function countryBreakdown(jobs: Job[], limit = 6): CountryStat[] {
   const counts = new Map<string, number>()
   for (const job of jobs) {
     const name = job.client_country || 'Unknown'
@@ -37,23 +29,8 @@ export function countryBreakdown(jobs: ScoredJob[], limit = 6): CountryStat[] {
     .slice(0, limit)
 }
 
-const TIER_ORDER: ScoreTier[] = ['hot', 'good', 'fair', 'low']
-
-/** Distribution of jobs across opportunity tiers. */
-export function tierDistribution(jobs: ScoredJob[]): TierStat[] {
-  const counts: Record<ScoreTier, number> = { hot: 0, good: 0, fair: 0, low: 0 }
-  for (const job of jobs) counts[job.scoring.tier]++
-  const total = jobs.length || 1
-  return TIER_ORDER.map((tier) => ({
-    tier,
-    label: TIER_LABEL[tier],
-    count: counts[tier],
-    pct: Math.round((counts[tier] / total) * 100),
-  }))
-}
-
 /** Most in-demand skills across all jobs. */
-export function topSkills(jobs: ScoredJob[], limit = 10): SkillStat[] {
+export function topSkills(jobs: Job[], limit = 10): SkillStat[] {
   const counts = new Map<string, number>()
   for (const job of jobs) {
     for (const skill of skillsOf(job)) {
@@ -68,10 +45,8 @@ export function topSkills(jobs: ScoredJob[], limit = 10): SkillStat[] {
     .slice(0, limit)
 }
 
-/** Highest-scoring jobs first. */
-export function topOpportunities(jobs: ScoredJob[], limit = 6): ScoredJob[] {
-  return jobs
-    .slice()
-    .sort((a, b) => b.scoring.score - a.scoring.score)
-    .slice(0, limit)
+/** Newest jobs first (feed default now that scoring is gone). */
+export function latestJobs(jobs: Job[], limit = 6): Job[] {
+  const ts = (j: Job) => (j.first_seen_at ? new Date(j.first_seen_at).getTime() : 0)
+  return jobs.slice().sort((a, b) => ts(b) - ts(a)).slice(0, limit)
 }

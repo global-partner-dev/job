@@ -15,6 +15,7 @@ from config.settings import (
 from storage.supabase_store import SupabaseJobStore
 from scrapers.workana_scraper import WorkanaScraper
 from parsers.client_stats import enrich_job_with_client_stats
+from parsers.filters import passes_listing_filters, passes_client_filters
 from utils.enrichment import enrich_job_with_ai
 from utils.openai_summarizer import OpenAISummarizer
 
@@ -44,51 +45,59 @@ def run_scrape(db, scraper, summarizer):
 
         print(f"Scraped {len(scraped_jobs)} jobs total")
 
-        # Only the jobs we've never stored before are worth enriching (saves API calls).
-        new_scraped = [j for j in scraped_jobs if j.get('id') and db.job_is_new(j['id'])]
-        print(f"New jobs this run: {len(new_scraped)}")
-
-        # Enrich new jobs with client project stats from their detail pages.
-        if new_scraped:
-            print("Fetching client project stats from job pages...")
-            for i, job in enumerate(new_scraped, 1):
-                if not job.get('url'):
-                    continue
-                enrich_job_with_client_stats(job, delay=i < len(new_scraped))
-                published = job.get('client_published_projects')
-                paid = job.get('client_paid_projects')
-                joined_month = job.get('client_joined_month')
-                joined = job.get('client_joined_year')
-                if published is not None or paid is not None or joined is not None:
-                    print(
-                        f"   [{i}/{len(new_scraped)}] "
-                        f"{(job.get('title') or 'Unknown')[:40]}... "
-                        f"Published: {published if published is not None else '?'} | "
-                        f"Paid: {paid if paid is not None else '?'} | "
-                        f"Joined: {joined_month if joined_month is not None else '?'}-{joined if joined is not None else '?'}"
-                    )
-
-            # Enrich new jobs with the English AI analysis for the web app.
-            if summarizer:
-                print("Adding AI analysis...")
-                for i, job in enumerate(new_scraped, 1):
-                    enrich_job_with_ai(job, summarizer=summarizer)
-                    if job.get('ai_summary'):
-                        print(f"   [{i}/{len(new_scraped)}] AI analysis ready: {(job.get('title') or 'Unknown')[:40]}...")
-
-        # Persist every scraped job (upsert): new ones inserted, seen ones refreshed.
-        new_jobs = []
-        updated_jobs = 0
+        # Stage 1 — cheap listing filters (country + price), no fetch needed.
+        stage1 = []
+        skipped_listing = 0
         for job in scraped_jobs:
             if not job.get('id'):
                 continue
-            is_new = db.save_job(job)
-            if is_new:
-                new_jobs.append(job)
+            ok, reason = passes_listing_filters(job)
+            if ok:
+                stage1.append(job)
             else:
-                updated_jobs += 1
+                skipped_listing += 1
+        print(f"Passed country/price: {len(stage1)} | filtered out: {skipped_listing}")
 
-        print(f"Saved to Supabase — New: {len(new_jobs)} | Updated: {updated_jobs}")
+        new_candidates = [j for j in stage1 if db.job_is_new(j['id'])]
+        existing_jobs = [j for j in stage1 if not db.job_is_new(j['id'])]
+        print(f"New candidates: {len(new_candidates)} | existing to refresh: {len(existing_jobs)}")
+
+        # Enrich new candidates with client stats + full description (detail page).
+        if new_candidates:
+            print("Fetching client project stats from job pages...")
+            for i, job in enumerate(new_candidates, 1):
+                if not job.get('url'):
+                    continue
+                enrich_job_with_client_stats(job, delay=i < len(new_candidates))
+
+        # Stage 2 — client payment-ability filter (needs the enriched stats).
+        new_to_store = []
+        skipped_nonpayer = 0
+        for job in new_candidates:
+            ok, reason = passes_client_filters(job)
+            if ok:
+                new_to_store.append(job)
+            else:
+                skipped_nonpayer += 1
+        print(f"Passed client filter: {len(new_to_store)} | non-payers skipped: {skipped_nonpayer}")
+
+        # AI analysis only for the jobs we will actually store.
+        if summarizer and new_to_store:
+            print("Adding AI analysis...")
+            for job in new_to_store:
+                enrich_job_with_ai(job, summarizer=summarizer)
+
+        # Save: insert new (filtered) + refresh existing (volatile fields only).
+        new_jobs = 0
+        updated_jobs = 0
+        for job in new_to_store:
+            db.save_job(job)
+            new_jobs += 1
+        for job in existing_jobs:
+            db.save_job(job)
+            updated_jobs += 1
+
+        print(f"Saved to Supabase — New: {new_jobs} | Updated: {updated_jobs}")
 
         duration = time.time() - start_time
         stats = db.get_statistics()
