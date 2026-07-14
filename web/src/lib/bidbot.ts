@@ -26,6 +26,9 @@ export interface BidBotSettings {
   bidAmountFixed: number
   bidDeliveryTime: string
   systemPrompt: string
+  // Bumped when default delays change; forces a one-time reset of the delay
+  // fields for users who have older (longer) values saved in localStorage.
+  settingsVersion: number
 }
 
 export const NO_NAME_PROMPT = `You write Workana first-message proposals that win trust and replies. Match the project's language (Portuguese, Spanish, or English). Write like an experienced senior freelancer: warm, confident, specific, and commercially smart — never generic, academic, or salesy.
@@ -52,14 +55,15 @@ export const DEFAULT_BIDBOT_SETTINGS: BidBotSettings = {
   freelancerSlug: '',
   minBidBudget: 0,
   portfolioUrl: '',
-  genDelayMinSec: 10,
-  genDelayMaxSec: 30,
-  gapDelayMinSec: 30,
-  gapDelayMaxSec: 40,
+  genDelayMinSec: 2,
+  genDelayMaxSec: 5,
+  gapDelayMinSec: 5,
+  gapDelayMaxSec: 10,
   priceStrategy: 'ai',
   bidAmountFixed: 150,
   bidDeliveryTime: '7 days',
   systemPrompt: NO_NAME_PROMPT,
+  settingsVersion: 2,
 }
 
 const SETTINGS_KEY = 'workana-radar:bidbot'
@@ -68,7 +72,18 @@ export function loadBidBotSettings(): BidBotSettings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
     if (!raw) return { ...DEFAULT_BIDBOT_SETTINGS }
-    return { ...DEFAULT_BIDBOT_SETTINGS, ...JSON.parse(raw) }
+    const merged: BidBotSettings = { ...DEFAULT_BIDBOT_SETTINGS, ...JSON.parse(raw) }
+    // One-time migration: reset the delay fields (keep everything else) when the
+    // saved settings predate the shorter-delay defaults.
+    if ((merged.settingsVersion ?? 0) < DEFAULT_BIDBOT_SETTINGS.settingsVersion) {
+      merged.genDelayMinSec = DEFAULT_BIDBOT_SETTINGS.genDelayMinSec
+      merged.genDelayMaxSec = DEFAULT_BIDBOT_SETTINGS.genDelayMaxSec
+      merged.gapDelayMinSec = DEFAULT_BIDBOT_SETTINGS.gapDelayMinSec
+      merged.gapDelayMaxSec = DEFAULT_BIDBOT_SETTINGS.gapDelayMaxSec
+      merged.settingsVersion = DEFAULT_BIDBOT_SETTINGS.settingsVersion
+      saveBidBotSettings(merged)
+    }
+    return merged
   } catch {
     return { ...DEFAULT_BIDBOT_SETTINGS }
   }
