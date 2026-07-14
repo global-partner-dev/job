@@ -106,31 +106,27 @@ export default function BidBotSettings({
           </section>
 
           <section className="space-y-3">
-            <h3 className="stat-label">Bidding mode</h3>
-            <div className="flex gap-2">
-              {(['manual', 'auto', 'full'] as const).map((m) => (
-                <button
-                  key={m}
-                  className={'btn flex-1 text-xs ' + (settings.submitMode === m ? 'btn-primary' : '')}
-                  onClick={() => set('submitMode', m)}
-                >
-                  {m === 'manual' ? 'Manual' : m === 'auto' ? 'Automated' : 'Fully auto'}
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] text-subtle">
-              {settings.submitMode === 'manual'
-                ? 'Manual: opens each SELECTED bid pre-filled — you click “Place bid”.'
-                : settings.submitMode === 'auto'
-                  ? 'Automated: places each SELECTED bid for you.'
-                  : 'Fully automated: no selection — continuously places bids on EVERY job matching your current feed filters, including new ones as they arrive.'}
-            </p>
-            {settings.submitMode === 'full' && (
-              <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-[11px] text-danger">
-                ⚠️ Fully automated bids without review and can consume your Workana bid credits fast.
-                Set tight feed filters (budget, last-reply, country, min score) before starting.
+            <h3 className="stat-label">Bid filter</h3>
+            <div>
+              <label className="text-xs text-muted">Only bid on projects with budget ≥ (USD)</label>
+              <input
+                className="input mt-1"
+                type="number"
+                min={0}
+                step={50}
+                value={settings.minBidBudget || ''}
+                placeholder="0 = no extra floor"
+                onChange={(e) => set('minBidBudget', num(e.target.value, 0))}
+              />
+              <p className="mt-1 text-[11px] text-subtle">
+                The archive already stores $101+. Raise this to conserve bid credits (hourly and
+                budget-less projects are always kept).
               </p>
-            )}
+            </div>
+            <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-[11px] text-danger">
+              ⚠️ Fully automated bids without review and places one bid per matching project (new
+              ones too, as they’re published). Use the budget filter to control credit use.
+            </p>
           </section>
 
           <section className="space-y-3">

@@ -60,13 +60,8 @@ export function useBidBot() {
       setProgress(new Map())
       setSummary(null)
       setRunning(true)
-      // The extension only knows 'auto' (submit) vs 'manual' (prefill); 'full'
-      // is a web-app selection concept and auto-submits at the extension.
-      const extSettings =
-        settings.submitMode === 'full'
-          ? { ...settings, submitMode: 'auto' as const }
-          : settings
-      startBidding({ jobs, settings: extSettings, auth })
+      // Fully automated only — the extension auto-submits (no submitMode sent).
+      startBidding({ jobs, settings, auth })
     },
     [settings],
   )

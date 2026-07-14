@@ -2,30 +2,17 @@ import type { ReactNode } from 'react'
 import type { BidRunSummary } from '../../hooks/useBidBot'
 import { token } from '../../lib/palette'
 
-type Mode = 'manual' | 'auto' | 'full'
-
 interface Props {
-  mode: Mode
   selectedCount: number
-  running: boolean
   extPresent: boolean | null
   progressDone: number
   summary: BidRunSummary | null
   autoRunning: boolean
   autoEligibleCount: number
-  onCycleMode: () => void
   onOpenSettings: () => void
   onClear: () => void
-  onStart: () => void
-  onStop: () => void
-  onToggleAuto: () => void
   onDeleteSelected: () => void
-}
-
-const MODE_LABEL: Record<Mode, string> = {
-  manual: '✍️ Manual',
-  auto: '🤖 Automated',
-  full: '⚡ Fully auto',
+  onToggleAuto: () => void
 }
 
 function GearButton({ onClick }: { onClick: () => void }) {
@@ -55,110 +42,58 @@ function Shell({ warn, children }: { warn: boolean; children: ReactNode }) {
 }
 
 export default function BidBotBar(props: Props) {
-  const { mode, running, extPresent, progressDone, summary, autoRunning } = props
-  const modeChip = (
-    <button className="chip" onClick={props.onCycleMode} title="Switch bidding mode">
-      {MODE_LABEL[mode]}
-    </button>
-  )
-  const warn = extPresent === false
+  const { extPresent, progressDone, summary, autoRunning, selectedCount } = props
 
-  // ---- Fully automated: persistent control, no manual selection --------------
-  if (mode === 'full') {
-    return (
-      <Shell warn={warn}>
-        <div className="min-w-0 flex-1">
-          {autoRunning ? (
-            <div className="text-sm font-medium text-content">
-              <span style={{ color: token('primary') }}>⚡ Fully automated</span> — bidding…{' '}
-              <span className="text-muted">{progressDone} processed</span>
-              {summary && (
-                <span className="text-subtle">
-                  {' '}· {summary.placed} placed, {summary.failed} failed
-                </span>
-              )}
-            </div>
-          ) : (
-            <div className="text-sm font-medium text-content">
-              ⚡ Fully automated ·{' '}
-              <span className="text-muted">{props.autoEligibleCount} job(s) match your filters</span>
-            </div>
-          )}
-        </div>
-        {modeChip}
-        <GearButton onClick={props.onOpenSettings} />
-        {autoRunning ? (
-          <button className="btn text-sm" onClick={props.onToggleAuto}>
-            Stop
-          </button>
-        ) : (
-          <button
-            className="btn btn-primary"
-            onClick={props.onToggleAuto}
-            disabled={extPresent === false}
-          >
-            Start auto-bidding
-          </button>
-        )}
-      </Shell>
-    )
-  }
-
-  // ---- Manual / Automated: selection-driven ---------------------------------
-  if (props.selectedCount === 0 && !running) return null
   return (
-    <Shell warn={warn}>
+    <Shell warn={extPresent === false}>
+      {selectedCount > 0 && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-content">{selectedCount} selected</span>
+          <button className="btn btn-ghost text-sm" onClick={props.onClear}>
+            Clear
+          </button>
+          <button
+            className="btn text-sm"
+            style={{ color: token('danger'), borderColor: token('danger', 0.4) }}
+            onClick={props.onDeleteSelected}
+            title="Remove the selected projects from your feed"
+          >
+            🗑 Delete
+          </button>
+          <span className="mx-1 hidden h-5 w-px bg-border sm:block" />
+        </div>
+      )}
+
       <div className="min-w-0 flex-1">
-        {running ? (
+        {autoRunning ? (
           <div className="text-sm font-medium text-content">
-            Bidding… <span className="text-muted">{progressDone} processed</span>
+            <span style={{ color: token('primary') }}>⚡ Fully automated</span> — bidding…{' '}
+            <span className="text-muted">{progressDone} processed</span>
             {summary && (
               <span className="text-subtle">
                 {' '}· {summary.placed} placed, {summary.failed} failed
               </span>
             )}
           </div>
-        ) : summary ? (
-          <div className="text-sm font-medium" style={{ color: token('success') }}>
-            Done — {summary.placed} placed, {summary.failed} failed of {summary.total}
-          </div>
         ) : (
           <div className="text-sm font-medium text-content">
-            {props.selectedCount} project{props.selectedCount === 1 ? '' : 's'} selected
+            <span style={{ color: token('primary') }}>⚡ Fully automated</span> ·{' '}
+            <span className="text-muted">{props.autoEligibleCount} project(s) to bid</span>
           </div>
         )}
       </div>
-      {!running && modeChip}
+
       <GearButton onClick={props.onOpenSettings} />
-      {!running && (
-        <button className="btn btn-ghost text-sm" onClick={props.onClear}>
-          Clear
-        </button>
-      )}
-      {!running && (
-        <button
-          className="btn text-sm"
-          onClick={props.onDeleteSelected}
-          disabled={props.selectedCount === 0}
-          style={
-            props.selectedCount > 0
-              ? { color: token('danger'), borderColor: token('danger', 0.4) }
-              : undefined
-          }
-          title="Remove the selected projects from your feed"
-        >
-          🗑 Delete
-        </button>
-      )}
-      {running ? (
-        <button className="btn text-sm" onClick={props.onStop}>
+
+      {autoRunning ? (
+        <button className="btn text-sm" onClick={props.onToggleAuto}>
           Stop
         </button>
       ) : (
         <button
           className="btn btn-primary"
-          onClick={props.onStart}
-          disabled={props.selectedCount === 0 || extPresent === false}
+          onClick={props.onToggleAuto}
+          disabled={extPresent === false}
         >
           Start bidding
         </button>

@@ -83,6 +83,18 @@ export function lastReplyHours(text: string | null | undefined): number | null {
   return null
 }
 
+/**
+ * Whether a job's budget meets a minimum (for the bid-time price filter).
+ * Hourly and no-budget jobs are kept (their "budget" isn't a fixed total).
+ */
+export function jobMeetsMinBudget(job: Job, min: number): boolean {
+  if (min <= 0) return true
+  if (job.budget_type === 'hourly') return true
+  const ceiling = job.budget_max ?? job.budget_min
+  if (ceiling == null) return true
+  return ceiling >= min
+}
+
 export function absoluteUrl(job: Job): string {
   const url = job.url || ''
   if (!url) return ''

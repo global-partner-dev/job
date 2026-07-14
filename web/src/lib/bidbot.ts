@@ -14,10 +14,10 @@ export interface BidBotSettings {
   openaiApiKey: string
   model: string
   freelancerSlug: string
+  // Only bid on projects with a budget >= this (0 = no extra floor; the scraper
+  // already stores only $101+). Lets you conserve bid credits without re-scraping.
+  minBidBudget: number
   portfolioUrl: string
-  // manual = open + prefill (you click Place bid) · auto = auto-submit selected
-  // full = fully automated: continuously bids on all jobs matching feed filters
-  submitMode: 'manual' | 'auto' | 'full'
   genDelayMinSec: number
   genDelayMaxSec: number
   gapDelayMinSec: number
@@ -50,8 +50,8 @@ export const DEFAULT_BIDBOT_SETTINGS: BidBotSettings = {
   openaiApiKey: '',
   model: 'gpt-4o-mini',
   freelancerSlug: '',
+  minBidBudget: 0,
   portfolioUrl: '',
-  submitMode: 'manual',
   genDelayMinSec: 10,
   genDelayMaxSec: 30,
   gapDelayMinSec: 30,

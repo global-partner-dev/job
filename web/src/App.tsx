@@ -8,6 +8,7 @@ import { useBids } from './hooks/useBids'
 import { useBidBot } from './hooks/useBidBot'
 import { isSupabaseConfigured } from './lib/supabase'
 import { jobToBidJob } from './lib/bidbot'
+import { jobMeetsMinBudget } from './lib/format'
 import { computeStats } from './lib/stats'
 import { latestJobs } from './lib/insights'
 import { token } from './lib/palette'
@@ -108,20 +109,6 @@ function AppShell() {
     clearSelect()
   }
 
-  const handleStartBidding = async () => {
-    if (!auth) return
-    const chosen = activeJobs.filter((j) => selectedIds.has(j.id))
-    // Skip only jobs already PLACED — locked/placing/failed are retryable.
-    const toBid = chosen.filter((j) => bidsByJob.get(j.id)?.status !== 'placed')
-    if (toBid.length === 0) {
-      clearSelect()
-      return
-    }
-    await lockJobs(toBid.map((j) => j.id))
-    bidbot.begin(toBid.map(jobToBidJob), auth)
-    clearSelect()
-  }
-
   const progressDone = useMemo(
     () =>
       [...bidbot.progress.values()].filter((p) =>
@@ -130,24 +117,18 @@ function AppShell() {
     [bidbot.progress],
   )
 
-  // --- Fully automated bidding: bids on the whole (pre-filtered) archive ------
+  // --- Fully automated bidding: bids the whole (pre-filtered) archive, minus
+  // placed / already-tried / below the optional bid-budget floor. -------------
   const eligibleAuto = useMemo(
     () =>
       activeJobs.filter(
-        (j) => bidsByJob.get(j.id)?.status !== 'placed' && !autoSentRef.current.has(j.id),
+        (j) =>
+          bidsByJob.get(j.id)?.status !== 'placed' &&
+          !autoSentRef.current.has(j.id) &&
+          jobMeetsMinBudget(j, bidbot.settings.minBidBudget),
       ),
-    [activeJobs, bidsByJob],
+    [activeJobs, bidsByJob, bidbot.settings.minBidBudget],
   )
-
-  const cycleMode = () => {
-    const order = ['manual', 'auto', 'full'] as const
-    const next = order[(order.indexOf(bidbot.settings.submitMode) + 1) % order.length]
-    bidbot.setSettings({ ...bidbot.settings, submitMode: next })
-    if (next !== 'full' && autoRunning) {
-      setAutoRunning(false)
-      bidbot.stop()
-    }
-  }
 
   const placedCount = useMemo(
     () => [...bidsByJob.values()].filter((b) => b.status === 'placed').length,
@@ -172,15 +153,7 @@ function AppShell() {
 
   const AUTO_BATCH = 20
   useEffect(() => {
-    if (
-      bidbot.settings.submitMode !== 'full' ||
-      !autoRunning ||
-      bidbot.running ||
-      batchInFlight.current ||
-      !auth
-    ) {
-      return
-    }
+    if (!autoRunning || bidbot.running || batchInFlight.current || !auth) return
     const batch = eligibleAuto.slice(0, AUTO_BATCH)
     if (batch.length === 0) return
     batch.forEach((j) => autoSentRef.current.add(j.id))
@@ -191,7 +164,7 @@ function AppShell() {
         batchInFlight.current = false
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRunning, bidbot.running, bidbot.settings.submitMode, eligibleAuto, auth])
+  }, [autoRunning, bidbot.running, eligibleAuto, auth])
 
   const activeView: View = view === 'admin' && !isAdmin ? 'dashboard' : view
   const selectable = activeView === 'jobs' || activeView === 'saved'
@@ -298,21 +271,16 @@ function AppShell() {
 
       {selectable && (
         <BidBotBar
-          mode={bidbot.settings.submitMode}
           selectedCount={selectedIds.size}
-          running={bidbot.running}
           extPresent={bidbot.extPresent}
           progressDone={progressDone}
           summary={bidbot.summary}
           autoRunning={autoRunning}
           autoEligibleCount={eligibleAuto.length}
-          onCycleMode={cycleMode}
           onOpenSettings={() => setSettingsOpen(true)}
           onClear={clearSelect}
-          onStart={handleStartBidding}
-          onStop={bidbot.stop}
-          onToggleAuto={toggleAuto}
           onDeleteSelected={handleDeleteSelected}
+          onToggleAuto={toggleAuto}
         />
       )}
 

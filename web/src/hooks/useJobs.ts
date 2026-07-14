@@ -97,5 +97,14 @@ export function useJobs(): UseJobsResult {
     }
   }, [])
 
+  // Safety net: refetch periodically so the list stays current without a manual
+  // page refresh even if the realtime stream drops. Realtime handles instant
+  // updates; this catches anything it misses.
+  useEffect(() => {
+    if (!isSupabaseConfigured) return
+    const id = setInterval(() => refresh(), 45_000)
+    return () => clearInterval(id)
+  }, [refresh])
+
   return { jobs, loading, error, liveIds, refresh }
 }
