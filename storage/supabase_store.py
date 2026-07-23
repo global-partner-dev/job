@@ -99,6 +99,8 @@ class SupabaseJobStore:
             "description": job.get("description"),
             "description_en": job.get("description_en"),
             "ai_summary": job.get("ai_summary"),
+            "ai_category": job.get("ai_category"),
+            "ai_category_reason": job.get("ai_category_reason"),
             "url": job.get("url"),
             "posted_date_relative": job.get("posted_date_relative"),
             "posted_date_timestamp": _to_iso(job.get("posted_date_timestamp")),
@@ -145,7 +147,8 @@ class SupabaseJobStore:
             # never overwrite the full detail-page content (or the AI fields) we
             # stored when the job was first seen and enriched. Volatile listing
             # fields (bids, budget, last reply, timestamps) still update.
-            for field in ("title", "description", "title_en", "description_en", "ai_summary"):
+            for field in ("title", "description", "title_en", "description_en",
+                          "ai_summary", "ai_category", "ai_category_reason"):
                 record.pop(field, None)
 
         self.client.table(self.JOBS_TABLE).upsert(record).execute()

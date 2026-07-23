@@ -19,6 +19,8 @@ create table if not exists public.jobs (
     description                 text,
     description_en              text,                        -- AI/Google translation
     ai_summary                  text,                        -- OpenAI analysis (**bold** markdown kept)
+    ai_category                 text,                        -- AI target-type verdict (saas_platform, corporate_service_website, custom_crm_erp, python_app_or_api_integration, shopify_project)
+    ai_category_reason          text,                        -- AI justification for the category verdict
     url                         text,
     posted_date_relative        text,
     posted_date_timestamp       timestamptz,
@@ -44,7 +46,13 @@ create table if not exists public.jobs (
     last_seen_at                timestamptz
 );
 
+-- Backfill columns onto pre-existing tables (create-table-if-not-exists above
+-- does not add columns to a table that already exists). Safe to re-run.
+alter table public.jobs add column if not exists ai_category        text;
+alter table public.jobs add column if not exists ai_category_reason text;
+
 create index if not exists idx_jobs_first_seen        on public.jobs (first_seen_at desc);
+create index if not exists idx_jobs_ai_category        on public.jobs (ai_category);
 create index if not exists idx_jobs_posted_timestamp  on public.jobs (posted_date_timestamp desc);
 create index if not exists idx_jobs_client_country     on public.jobs (client_country);
 create index if not exists idx_jobs_budget_type        on public.jobs (budget_type);

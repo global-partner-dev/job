@@ -71,3 +71,9 @@ LOG_FILE = BASE_DIR / 'scraper.log'
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '').strip()
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini').strip()
 
+# AI category filter — when on, only store jobs the AI classifies as one of the
+# target project types (SaaS, corporate/service sites excl. WordPress, custom
+# CRM/ERP, Python apps / API integrations, Shopify). Set to '0'/'false' to keep
+# the previous behaviour (store everything that passes country/price/payment).
+AI_CATEGORY_FILTER = os.getenv('AI_CATEGORY_FILTER', '1').strip().lower() not in ('0', 'false', 'no', '')
+

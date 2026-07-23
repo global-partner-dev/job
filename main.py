@@ -16,8 +16,9 @@ from storage.supabase_store import SupabaseJobStore
 from scrapers.workana_scraper import WorkanaScraper
 from parsers.client_stats import enrich_job_with_client_stats
 from parsers.filters import passes_listing_filters, passes_client_filters
-from utils.enrichment import enrich_job_with_ai
+from utils.enrichment import enrich_job_with_ai, job_matches_target_category
 from utils.openai_summarizer import OpenAISummarizer
+from config.settings import AI_CATEGORY_FILTER
 
 
 def run_scrape(db, scraper, summarizer):
@@ -80,6 +81,26 @@ def run_scrape(db, scraper, summarizer):
             else:
                 skipped_nonpayer += 1
         print(f"Passed client filter: {len(new_to_store)} | non-payers skipped: {skipped_nonpayer}")
+
+        # Stage 3 — AI category filter: keep only the target project types
+        # (SaaS, corporate/service sites excl. WordPress, custom CRM/ERP,
+        # Python apps / API integrations, Shopify). Needs the full description.
+        if AI_CATEGORY_FILTER:
+            if summarizer and summarizer.is_available():
+                matched = []
+                skipped_offtarget = 0
+                for job in new_to_store:
+                    if job_matches_target_category(job, summarizer=summarizer):
+                        matched.append(job)
+                    else:
+                        skipped_offtarget += 1
+                new_to_store = matched
+                print(
+                    f"Passed AI category filter: {len(new_to_store)} | "
+                    f"off-target skipped: {skipped_offtarget}"
+                )
+            else:
+                print("⚠️  AI category filter enabled but summarizer unavailable — skipping filter")
 
         # AI analysis only for the jobs we will actually store.
         if summarizer and new_to_store:
