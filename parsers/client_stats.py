@@ -39,14 +39,19 @@ _session.headers.update(BROWSER_HEADERS)
 # so a WAF block can be retried through a real browser that already passed the
 # challenge on the listing page.
 _browser_fetcher: Optional[Callable[[str], Optional[str]]] = None
-_browser_fetch_failed = False
+
+# Driving a browser through a Cloudflare challenge costs ~30s and usually fails
+# while the block is in force, so a failure benches the fallback for a while
+# rather than re-paying that cost on every job of every run.
+BROWSER_COOLDOWN_SEC = 15 * 60
+_browser_blocked_until = 0.0
 
 
 def set_browser_fetcher(fetcher: Optional[Callable[[str], Optional[str]]]) -> None:
     """Register a `url -> html` callable used when plain HTTP is blocked."""
-    global _browser_fetcher, _browser_fetch_failed
+    global _browser_fetcher, _browser_blocked_until
     _browser_fetcher = fetcher
-    _browser_fetch_failed = False
+    _browser_blocked_until = 0.0
 
 
 def sync_cookies_from_browser(cookies) -> int:
@@ -247,7 +252,7 @@ def _fetch_job_html(job_url: str) -> Optional[str]:
     Fetch a job detail page, falling back to the real browser when the WAF
     blocks the plain HTTP request.
     """
-    global _browser_fetch_failed
+    global _browser_blocked_until
 
     status = None
     try:
@@ -264,16 +269,18 @@ def _fetch_job_html(job_url: str) -> Optional[str]:
         print(f"⚠️  Could not fetch job page ({status}): {job_url}")
         return None
 
-    if _browser_fetcher is None or _browser_fetch_failed:
+    if _browser_fetcher is None or time.time() < _browser_blocked_until:
         print(f"⚠️  Could not fetch job page ({status or 'network error'}): {job_url}")
         return None
 
     html = _browser_fetcher(job_url)
     if not html:
-        # One failure is enough to stop paying the browser cost for every job
-        # in this run; the next run re-arms it.
-        _browser_fetch_failed = True
-        print(f"⚠️  Browser fallback also failed ({status}): {job_url}")
+        _browser_blocked_until = time.time() + BROWSER_COOLDOWN_SEC
+        mins = BROWSER_COOLDOWN_SEC // 60
+        print(
+            f"⚠️  Browser fallback also failed ({status}): {job_url}\n"
+            f"    Skipping the browser fallback for {mins} min, then retrying it."
+        )
         return None
     return html
 
