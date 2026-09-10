@@ -3,17 +3,17 @@
  * Workana or chrome.* APIs) to the extension background worker.
  *
  * Page → bridge (window.postMessage, source 'workana-radar'):
- *   PING · START_BIDDING{payload} · STOP_BIDDING
+ *   PING · START_ASKING{payload} · STOP_ASKING
  * bridge → page (window.postMessage, source 'workana-radar-ext'):
- *   PONG · BID_PROGRESS{payload} · BID_DONE{payload}
+ *   PONG · ASK_PROGRESS{payload} · ASK_DONE{payload}
  *
- * While a bid run is active the bridge holds an open port to the background,
- * which keeps the MV3 service worker alive for the duration.
+ * While a run is active the bridge holds an open port to the background, which
+ * keeps the MV3 service worker alive for the duration.
  */
 (function () {
   const CH = 'workana-radar';
   const REPLY = 'workana-radar-ext';
-  const VERSION = '2.0.0';
+  const VERSION = '3.0.0';
 
   // SECURITY: only your real Workana Radar origin(s) may drive the extension.
   // Set PROD_ORIGIN to your deployed app origin (must match the manifest match).
@@ -37,10 +37,10 @@
 
   function ensurePort() {
     if (port) return port;
-    port = chrome.runtime.connect({ name: 'bidbot' });
+    port = chrome.runtime.connect({ name: 'askbot' });
     port.onMessage.addListener((msg) => {
-      if (msg?.type === 'PROGRESS') reply('BID_PROGRESS', msg.payload);
-      else if (msg?.type === 'DONE') reply('BID_DONE', msg.payload);
+      if (msg?.type === 'PROGRESS') reply('ASK_PROGRESS', msg.payload);
+      else if (msg?.type === 'DONE') reply('ASK_DONE', msg.payload);
     });
     port.onDisconnect.addListener(() => {
       port = null;
@@ -56,13 +56,13 @@
 
     if (data.type === 'PING') {
       reply('PONG', { version: VERSION });
-    } else if (data.type === 'START_BIDDING') {
+    } else if (data.type === 'START_ASKING') {
       try {
         ensurePort().postMessage({ type: 'START', payload: data.payload });
       } catch (err) {
-        reply('BID_DONE', { total: 0, placed: 0, failed: 0, error: String(err) });
+        reply('ASK_DONE', { total: 0, sent: 0, prepared: 0, failed: 0, error: String(err) });
       }
-    } else if (data.type === 'STOP_BIDDING') {
+    } else if (data.type === 'STOP_ASKING') {
       try {
         if (port) port.postMessage({ type: 'STOP' });
       } catch {

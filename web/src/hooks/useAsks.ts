@@ -1,25 +1,28 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './useAuth'
-import type { Bid } from '../types'
+import { toAskRecord, type AskRecord, type AskStatus } from '../types'
 
-interface UseBidsResult {
-  /** job_id → the user's bid record for it (if any). */
-  byJob: Map<string, Bid>
+/** Table name is historical — a row records one question asked about a project. */
+const TABLE = 'bids'
+
+interface UseAsksResult {
+  /** job_id → the user's ask record for it (if any). */
+  byJob: Map<string, AskRecord>
   loading: boolean
-  /** Insert a 'locked' bid for each job the user hasn't already bid. Returns count newly locked. */
-  lockJobs: (jobIds: string[]) => Promise<{ locked: number; skipped: number; error?: string }>
-  /** Upsert a bid's status (written by the web app from the extension's progress). */
-  markBid: (jobId: string, patch: Partial<Pick<Bid, 'status' | 'amount' | 'delivery_time'>>) => Promise<void>
-  /** Delete the user's bid rows with any of the given statuses. Returns count deleted. */
-  deleteBids: (statuses: Bid['status'][]) => Promise<number>
+  /** Claim projects so a second tab/device won't ask about them too. */
+  claimJobs: (jobIds: string[]) => Promise<{ claimed: number; skipped: number; error?: string }>
+  /** Upsert an ask's status (written by the web app from the extension's progress). */
+  markAsk: (jobId: string, patch: Partial<Pick<AskRecord, 'status' | 'question'>>) => Promise<void>
+  /** Delete the user's ask rows with any of the given statuses. Returns count deleted. */
+  deleteAsks: (statuses: AskStatus[]) => Promise<number>
   refetch: () => void
 }
 
-export function useBids(): UseBidsResult {
+export function useAsks(): UseAsksResult {
   const { session } = useAuth()
   const userId = session?.user?.id
-  const [byJob, setByJob] = useState<Map<string, Bid>>(new Map())
+  const [byJob, setByJob] = useState<Map<string, AskRecord>>(new Map())
   const [loading, setLoading] = useState(true)
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -34,12 +37,12 @@ export function useBids(): UseBidsResult {
     let active = true
     setLoading(true)
     supabase
-      .from('bids')
+      .from(TABLE)
       .select('*')
       .then(({ data, error }) => {
         if (!active) return
         if (!error && data) {
-          setByJob(new Map((data as Bid[]).map((b) => [b.job_id, b])))
+          setByJob(new Map(data.map((row) => [String(row.job_id), toAskRecord(row)])))
         }
         setLoading(false)
       })
@@ -48,23 +51,23 @@ export function useBids(): UseBidsResult {
     }
   }, [userId, reloadKey])
 
-  // Live updates as the extension writes bid status.
+  // Live updates as the extension writes ask status.
   useEffect(() => {
     if (!userId) return
     const channel = supabase
-      .channel('bids-feed')
+      .channel('asks-feed')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'bids', filter: `user_id=eq.${userId}` },
+        { event: '*', schema: 'public', table: TABLE, filter: `user_id=eq.${userId}` },
         (payload) => {
           setByJob((prev) => {
             const next = new Map(prev)
             if (payload.eventType === 'DELETE') {
-              const old = payload.old as Bid
-              if (old?.job_id) next.delete(old.job_id)
+              const jobId = (payload.old as { job_id?: string })?.job_id
+              if (jobId) next.delete(jobId)
             } else {
-              const row = payload.new as Bid
-              if (row?.job_id) next.set(row.job_id, row)
+              const row = toAskRecord(payload.new as Record<string, unknown>)
+              if (row.job_id) next.set(row.job_id, row)
             }
             return next
           })
@@ -76,35 +79,38 @@ export function useBids(): UseBidsResult {
     }
   }, [userId])
 
-  const lockJobs = useCallback(
+  const claimJobs = useCallback(
     async (jobIds: string[]) => {
-      if (!userId) return { locked: 0, skipped: 0, error: 'Not signed in' }
+      if (!userId) return { claimed: 0, skipped: 0, error: 'Not signed in' }
       const fresh = jobIds.filter((id) => !byJob.has(id))
       const skipped = jobIds.length - fresh.length
-      if (fresh.length === 0) return { locked: 0, skipped }
+      if (fresh.length === 0) return { claimed: 0, skipped }
 
-      const rows = fresh.map((job_id) => ({ user_id: userId, job_id, status: 'locked' as const }))
+      const rows = fresh.map((job_id) => ({ user_id: userId, job_id, status: 'queued' as const }))
       const { data, error } = await supabase
-        .from('bids')
+        .from(TABLE)
         .upsert(rows, { onConflict: 'user_id,job_id', ignoreDuplicates: true })
         .select()
 
-      if (error) return { locked: 0, skipped, error: error.message }
+      if (error) return { claimed: 0, skipped, error: error.message }
 
       if (data) {
         setByJob((prev) => {
           const next = new Map(prev)
-          for (const b of data as Bid[]) next.set(b.job_id, b)
+          for (const row of data) {
+            const rec = toAskRecord(row)
+            next.set(rec.job_id, rec)
+          }
           return next
         })
       }
-      return { locked: (data as Bid[] | null)?.length ?? fresh.length, skipped }
+      return { claimed: data?.length ?? fresh.length, skipped }
     },
     [userId, byJob],
   )
 
-  const markBid = useCallback(
-    async (jobId: string, patch: Partial<Pick<Bid, 'status' | 'amount' | 'delivery_time'>>) => {
+  const markAsk = useCallback(
+    async (jobId: string, patch: Partial<Pick<AskRecord, 'status' | 'question'>>) => {
       if (!userId) return
       // Optimistic local update so the badge is instant + survives refresh.
       setByJob((prev) => {
@@ -116,11 +122,8 @@ export function useBids(): UseBidsResult {
             id: '',
             user_id: userId,
             job_id: jobId,
-            status: 'locked',
-            amount: null,
-            delivery_time: null,
-            proposal: null,
-            bid_url: null,
+            status: 'queued',
+            question: null,
             error: null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -130,33 +133,35 @@ export function useBids(): UseBidsResult {
       })
       // Persist with the web app's live session (no token-expiry problem).
       const { error } = await supabase
-        .from('bids')
+        .from(TABLE)
         .upsert(
           { user_id: userId, job_id: jobId, ...patch, updated_at: new Date().toISOString() },
           { onConflict: 'user_id,job_id' },
         )
-      if (error) console.warn('[bids] markBid failed:', error.message)
+      if (error) console.warn('[asks] markAsk failed:', error.message)
     },
     [userId],
   )
 
-  const deleteBids = useCallback(
-    async (statuses: Bid['status'][]) => {
+  const deleteAsks = useCallback(
+    async (statuses: AskStatus[]) => {
       if (!userId || statuses.length === 0) return 0
-      const victims = [...byJob.values()].filter((b) => statuses.includes(b.status))
+      const victims = [...byJob.values()].filter((a) => statuses.includes(a.status))
       if (victims.length === 0) return 0
+      // Include the legacy names for the same states so pre-migration rows go too.
+      const legacy = statuses.includes('sent') ? ['placed', 'manual'] : []
       const { error } = await supabase
-        .from('bids')
+        .from(TABLE)
         .delete()
         .eq('user_id', userId)
-        .in('status', statuses)
+        .in('status', [...statuses, ...legacy])
       if (error) {
-        console.warn('[bids] delete failed:', error.message)
+        console.warn('[asks] delete failed:', error.message)
         return 0
       }
       setByJob((prev) => {
         const next = new Map(prev)
-        for (const [jobId, b] of prev) if (statuses.includes(b.status)) next.delete(jobId)
+        for (const [jobId, a] of prev) if (statuses.includes(a.status)) next.delete(jobId)
         return next
       })
       return victims.length
@@ -164,5 +169,5 @@ export function useBids(): UseBidsResult {
     [userId, byJob],
   )
 
-  return { byJob, loading, lockJobs, markBid, deleteBids, refetch }
+  return { byJob, loading, claimJobs, markAsk, deleteAsks, refetch }
 }

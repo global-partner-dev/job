@@ -95,9 +95,7 @@ class SupabaseJobStore:
         record: Dict[str, Any] = {
             "id": job.get("id"),
             "title": job.get("title"),
-            "title_en": job.get("title_en"),
             "description": job.get("description"),
-            "description_en": job.get("description_en"),
             "ai_summary": job.get("ai_summary"),
             "ai_category": job.get("ai_category"),
             "ai_category_reason": job.get("ai_category_reason"),
@@ -147,7 +145,7 @@ class SupabaseJobStore:
             # never overwrite the full detail-page content (or the AI fields) we
             # stored when the job was first seen and enriched. Volatile listing
             # fields (bids, budget, last reply, timestamps) still update.
-            for field in ("title", "description", "title_en", "description_en",
+            for field in ("title", "description",
                           "ai_summary", "ai_category", "ai_category_reason"):
                 record.pop(field, None)
 

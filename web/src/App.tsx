@@ -4,15 +4,17 @@ import { useSavedJobs } from './hooks/useSavedJobs'
 import { useDismissedJobs } from './hooks/useDismissedJobs'
 import { useTheme } from './hooks/useTheme'
 import { useAuth } from './hooks/useAuth'
-import { useBids } from './hooks/useBids'
-import { useBidBot } from './hooks/useBidBot'
+import { useAsks } from './hooks/useAsks'
+import { useAskBot } from './hooks/useAskBot'
+import { useAutoAsk } from './hooks/useAutoAsk'
 import { isSupabaseConfigured } from './lib/supabase'
-import { jobToBidJob } from './lib/bidbot'
+import { jobToAskJob, type AskPhase } from './lib/askbot'
 import { jobMeetsMinBudget } from './lib/format'
 import { computeStats } from './lib/stats'
 import { latestJobs } from './lib/insights'
+import { applyJobFilters, DEFAULT_FILTERS, type JobFilterState } from './lib/jobFilters'
 import { token } from './lib/palette'
-import type { Bid, Job, View } from './types'
+import type { AskStatus, Job, View } from './types'
 
 import Sidebar from './components/layout/Sidebar'
 import Topbar from './components/layout/Topbar'
@@ -20,11 +22,12 @@ import SetupNotice from './components/SetupNotice'
 import StatsBar from './components/StatsBar'
 import CountryBreakdown from './components/panels/CountryBreakdown'
 import JobList from './components/JobList'
+import JobFilters from './components/JobFilters'
 import AuthScreen from './components/auth/AuthScreen'
 import AccountStatus from './components/auth/AccountStatus'
 import AdminPanel from './components/admin/AdminPanel'
-import BidBotBar from './components/bidbot/BidBotBar'
-import BidBotSettings from './components/bidbot/BidBotSettings'
+import AskBotBar from './components/askbot/AskBotBar'
+import AskBotSettingsDrawer from './components/askbot/AskBotSettings'
 
 const VIEW_META: Record<View, { title: string; subtitle: string }> = {
   dashboard: { title: 'Dashboard', subtitle: 'Live overview of stored opportunities' },
@@ -56,22 +59,27 @@ export default function App() {
   return <AppShell />
 }
 
+const seenAt = (job: Job) => (job.first_seen_at ? new Date(job.first_seen_at).getTime() : 0)
+
 function AppShell() {
   const { theme, toggle: toggleTheme } = useTheme()
   const { jobs, loading, error, liveIds, refresh } = useJobs()
   const { saved, toggle: toggleSave } = useSavedJobs()
   const { dismissed, dismiss } = useDismissedJobs()
   const { profile, isAdmin, signOut, session } = useAuth()
-  const { byJob: bidsByJob, lockJobs, markBid, deleteBids } = useBids()
-  const bidbot = useBidBot()
+  const { byJob: asksByJob, claimJobs, markAsk, deleteAsks } = useAsks()
+  const askbot = useAskBot()
+  const autoAsk = useAutoAsk()
 
   const [view, setView] = useState<View>('dashboard')
   const [menuOpen, setMenuOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [autoRunning, setAutoRunning] = useState(false)
-  const batchInFlight = useRef(false)
-  const autoSentRef = useRef<Set<string>>(new Set())
+  const [filters, setFilters] = useState<JobFilterState>(DEFAULT_FILTERS)
+  const handoffInFlight = useRef(false)
+  // Projects already handed to the extension this session — so a project you
+  // chose not to send doesn't reopen itself in a loop.
+  const handedOffRef = useRef<Set<string>>(new Set())
 
   const auth = useMemo(
     () =>
@@ -89,9 +97,42 @@ function AppShell() {
   // The archive is already filtered at the scraper; here we only drop jobs the
   // user has deleted from their own feed. Newest-first (useJobs order).
   const activeJobs = useMemo<Job[]>(() => jobs.filter((j) => !dismissed.has(j.id)), [jobs, dismissed])
+
+  // --- The auto-ask queue ---------------------------------------------------
+  // Everything published since the toggle was switched on that you haven't sent
+  // a question about yet. A sent question drops the project off this list.
+  const queue = useMemo<Job[]>(() => {
+    const since = autoAsk.enabledAtMs
+    if (!autoAsk.enabled || since == null) return []
+    return activeJobs
+      .filter(
+        (j) =>
+          seenAt(j) >= since &&
+          asksByJob.get(j.id)?.status !== 'sent' &&
+          jobMeetsMinBudget(j, askbot.settings.minBudget),
+      )
+      .sort((a, b) => seenAt(b) - seenAt(a))
+  }, [activeJobs, asksByJob, autoAsk.enabled, autoAsk.enabledAtMs, askbot.settings.minBudget])
+
+  // While auto-ask runs the feed IS the queue; otherwise it's the whole archive.
+  const feedBase = autoAsk.enabled ? queue : activeJobs
+  const visibleJobs = useMemo(
+    () => applyJobFilters(feedBase, filters, asksByJob),
+    [feedBase, filters, asksByJob],
+  )
+
   const stats = useMemo(() => computeStats(activeJobs), [activeJobs])
-  const latest = useMemo(() => latestJobs(activeJobs, 6), [activeJobs])
-  const savedJobs = useMemo(() => activeJobs.filter((j) => saved.has(j.id)), [activeJobs, saved])
+  const latest = useMemo(() => latestJobs(feedBase, 6), [feedBase])
+  const savedBase = useMemo(() => activeJobs.filter((j) => saved.has(j.id)), [activeJobs, saved])
+  const savedJobs = useMemo(
+    () => applyJobFilters(savedBase, filters, asksByJob),
+    [savedBase, filters, asksByJob],
+  )
+
+  const sentCount = useMemo(
+    () => [...asksByJob.values()].filter((a) => a.status === 'sent').length,
+    [asksByJob],
+  )
 
   const toggleSelect = (id: string) =>
     setSelectedIds((prev) => {
@@ -109,97 +150,85 @@ function AppShell() {
     clearSelect()
   }
 
-  // Persist bid status in Supabase from the extension's progress stream, using
+  const handleDeleteSent = async () => {
+    if (sentCount === 0) return
+    if (!window.confirm(`Forget ${sentCount} sent question(s)? Those projects can be queued again.`))
+      return
+    await deleteAsks(['sent'])
+  }
+
+  const handleToggleAuto = () => {
+    if (autoAsk.enabled) {
+      autoAsk.disable()
+      askbot.stop()
+    } else {
+      handedOffRef.current = new Set()
+      autoAsk.enable()
+    }
+  }
+
+  // Persist ask status in Supabase from the extension's progress stream, using
   // the web app's live session — the extension's captured token can expire and
-  // silently fail to write, which left placed bids stuck at "locked".
-  const statusWrittenRef = useRef<Map<string, string>>(new Map())
+  // silently fail to write.
+  const statusWrittenRef = useRef<Map<string, AskStatus>>(new Map())
   useEffect(() => {
-    const PHASE_TO_STATUS: Partial<Record<string, Bid['status']>> = {
-      submit: 'placing',
-      placed: 'placed',
-      manual: 'manual',
+    const PHASE_TO_STATUS: Partial<Record<AskPhase, AskStatus>> = {
+      prepare: 'preparing',
+      opening: 'preparing',
+      prepared: 'prepared',
+      sent: 'sent',
       failed: 'failed',
       skipped: 'skipped',
     }
-    for (const [jobId, p] of bidbot.progress) {
+    for (const [jobId, p] of askbot.progress) {
       const status = PHASE_TO_STATUS[p.phase]
       if (!status) continue
       if (statusWrittenRef.current.get(jobId) === status) continue
       statusWrittenRef.current.set(jobId, status)
-      const patch: Partial<Pick<Bid, 'status' | 'amount' | 'delivery_time'>> = { status }
-      if (p.amount != null) patch.amount = p.amount
-      if (p.deliveryTime != null) patch.delivery_time = p.deliveryTime
-      markBid(jobId, patch)
+      markAsk(jobId, p.question ? { status, question: p.question } : { status })
     }
-  }, [bidbot.progress, markBid])
+  }, [askbot.progress, markAsk])
 
-  const progressDone = useMemo(
-    () =>
-      [...bidbot.progress.values()].filter((p) =>
-        ['placed', 'manual', 'failed', 'skipped'].includes(p.phase),
-      ).length,
-    [bidbot.progress],
-  )
-
-  // --- Fully automated bidding: bids the whole (pre-filtered) archive, minus
-  // placed / already-tried / below the optional bid-budget floor. -------------
-  const eligibleAuto = useMemo(
-    () =>
-      activeJobs.filter(
-        (j) =>
-          bidsByJob.get(j.id)?.status !== 'placed' &&
-          !autoSentRef.current.has(j.id) &&
-          jobMeetsMinBudget(j, bidbot.settings.minBidBudget),
-      ),
-    [activeJobs, bidsByJob, bidbot.settings.minBidBudget],
-  )
-
-  const placedCount = useMemo(
-    () => [...bidsByJob.values()].filter((b) => b.status === 'placed').length,
-    [bidsByJob],
-  )
-
-  const handleDeletePlaced = async () => {
-    if (placedCount === 0) return
-    if (!window.confirm(`Delete ${placedCount} already-bid project(s) from your bid list?`)) return
-    await deleteBids(['placed'])
-  }
-
-  const toggleAuto = () => {
-    if (autoRunning) {
-      setAutoRunning(false)
-      bidbot.stop()
-    } else {
-      autoSentRef.current = new Set()
-      setAutoRunning(true)
-    }
-  }
-
-  const AUTO_BATCH = 20
+  // --- Hand the newest unasked project to the extension, one at a time -------
+  // Sending a single project per run keeps "newest first" honest: a project
+  // published while the previous one is open still goes next.
   useEffect(() => {
-    if (!autoRunning || bidbot.running || batchInFlight.current || !auth) return
-    const batch = eligibleAuto.slice(0, AUTO_BATCH)
-    if (batch.length === 0) return
-    batch.forEach((j) => autoSentRef.current.add(j.id))
-    batchInFlight.current = true
-    lockJobs(batch.map((j) => j.id))
-      .then(() => bidbot.begin(batch.map(jobToBidJob), auth))
+    if (!autoAsk.enabled || askbot.running || handoffInFlight.current || !auth) return
+    if (askbot.extPresent === false) return
+    // Only projects nothing has been attempted on yet. A reload must not reopen
+    // one that is already prepared and waiting for your click, or that failed.
+    const next = queue.find((j) => {
+      if (handedOffRef.current.has(j.id)) return false
+      const status = asksByJob.get(j.id)?.status
+      return status == null || status === 'queued'
+    })
+    if (!next) return
+
+    handedOffRef.current.add(next.id)
+    handoffInFlight.current = true
+    claimJobs([next.id])
+      .then(() => askbot.begin([jobToAskJob(next)], auth))
       .finally(() => {
-        batchInFlight.current = false
+        handoffInFlight.current = false
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRunning, bidbot.running, eligibleAuto, auth])
+  }, [autoAsk.enabled, askbot.running, askbot.extPresent, queue, asksByJob, auth])
 
   const activeView: View = view === 'admin' && !isAdmin ? 'dashboard' : view
-  const selectable = activeView === 'jobs' || activeView === 'saved'
+  const showBar = activeView !== 'admin'
+  const filterable = activeView === 'jobs' || activeView === 'saved'
   const meta = VIEW_META[activeView]
+  const jobsSubtitle =
+    activeView === 'jobs' && autoAsk.enabled
+      ? 'Projects published since auto-ask was switched on, minus the ones you sent'
+      : meta.subtitle
 
   return (
     <div className="min-h-full">
       <Sidebar
         view={activeView}
         onChange={setView}
-        counts={{ jobs: activeJobs.length, saved: saved.size }}
+        counts={{ jobs: feedBase.length, saved: saved.size }}
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         isAdmin={isAdmin}
@@ -210,7 +239,7 @@ function AppShell() {
       <div className="lg:pl-64">
         <Topbar
           title={meta.title}
-          subtitle={meta.subtitle}
+          subtitle={jobsSubtitle}
           live={isSupabaseConfigured && !error}
           loading={loading}
           theme={theme}
@@ -219,7 +248,7 @@ function AppShell() {
           onOpenMenu={() => setMenuOpen(true)}
         />
 
-        <main className="mx-auto w-full max-w-7xl px-4 pb-24 pt-6 sm:px-6">
+        <main className="mx-auto w-full max-w-7xl px-4 pb-28 pt-6 sm:px-6">
           {activeView === 'admin' && isAdmin ? (
             <AdminPanel />
           ) : (
@@ -237,8 +266,12 @@ function AppShell() {
                   <section>
                     <div className="mb-3 flex items-center justify-between">
                       <div>
-                        <h2 className="card-title">Latest projects</h2>
-                        <p className="card-sub">Most recently scraped</p>
+                        <h2 className="card-title">
+                          {autoAsk.enabled ? 'Waiting for a question' : 'Latest projects'}
+                        </h2>
+                        <p className="card-sub">
+                          {autoAsk.enabled ? 'Newest first — sent ones drop off' : 'Most recently scraped'}
+                        </p>
                       </div>
                       <button className="btn btn-ghost text-sm" onClick={() => setView('jobs')}>
                         View all →
@@ -250,6 +283,12 @@ function AppShell() {
                       savedIds={saved}
                       onToggleSave={toggleSave}
                       loading={loading}
+                      asks={asksByJob}
+                      emptyHint={
+                        autoAsk.enabled
+                          ? 'Nothing published since auto-ask was switched on yet.'
+                          : undefined
+                      }
                     />
                   </section>
                 </div>
@@ -257,9 +296,15 @@ function AppShell() {
 
               {activeView === 'jobs' && (
                 <div className="space-y-3 animate-fade-in">
-                  <p className="text-sm text-muted">{activeJobs.length} projects</p>
+                  <JobFilters
+                    jobs={feedBase}
+                    filters={filters}
+                    onChange={setFilters}
+                    shown={visibleJobs.length}
+                    total={feedBase.length}
+                  />
                   <JobList
-                    jobs={activeJobs}
+                    jobs={visibleJobs}
                     liveIds={liveIds}
                     savedIds={saved}
                     onToggleSave={toggleSave}
@@ -267,14 +312,25 @@ function AppShell() {
                     selectable
                     selectedIds={selectedIds}
                     onToggleSelect={toggleSelect}
-                    bidStatuses={bidsByJob}
+                    asks={asksByJob}
+                    emptyHint={
+                      autoAsk.enabled
+                        ? 'Nothing published since auto-ask was switched on. New projects land here the moment they are scraped.'
+                        : undefined
+                    }
                   />
                 </div>
               )}
 
               {activeView === 'saved' && (
                 <div className="space-y-3 animate-fade-in">
-                  <p className="text-sm text-muted">{savedJobs.length} saved</p>
+                  <JobFilters
+                    jobs={savedBase}
+                    filters={filters}
+                    onChange={setFilters}
+                    shown={savedJobs.length}
+                    total={savedBase.length}
+                  />
                   <JobList
                     jobs={savedJobs}
                     liveIds={liveIds}
@@ -284,7 +340,7 @@ function AppShell() {
                     selectable
                     selectedIds={selectedIds}
                     onToggleSelect={toggleSelect}
-                    bidStatuses={bidsByJob}
+                    asks={asksByJob}
                   />
                 </div>
               )}
@@ -293,28 +349,30 @@ function AppShell() {
         </main>
       </div>
 
-      {selectable && (
-        <BidBotBar
-          selectedCount={selectedIds.size}
-          extPresent={bidbot.extPresent}
-          progressDone={progressDone}
-          summary={bidbot.summary}
-          autoRunning={autoRunning}
-          autoEligibleCount={eligibleAuto.length}
+      {showBar && (
+        <AskBotBar
+          autoOn={autoAsk.enabled}
+          enabledAt={autoAsk.enabledAt}
+          pendingCount={queue.length}
+          sentCount={sentCount}
+          activity={askbot.latest?.message ?? null}
+          extPresent={askbot.extPresent}
+          summary={askbot.summary}
+          selectedCount={filterable ? selectedIds.size : 0}
+          onToggleAuto={handleToggleAuto}
           onOpenSettings={() => setSettingsOpen(true)}
           onClear={clearSelect}
           onDeleteSelected={handleDeleteSelected}
-          onToggleAuto={toggleAuto}
         />
       )}
 
-      <BidBotSettings
+      <AskBotSettingsDrawer
         open={settingsOpen}
-        settings={bidbot.settings}
-        onChange={bidbot.setSettings}
+        settings={askbot.settings}
+        onChange={askbot.setSettings}
         onClose={() => setSettingsOpen(false)}
-        placedCount={placedCount}
-        onDeletePlaced={handleDeletePlaced}
+        sentCount={sentCount}
+        onDeleteSent={handleDeleteSent}
       />
     </div>
   )

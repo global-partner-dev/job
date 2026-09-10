@@ -46,13 +46,13 @@ export function skillsOf(job: Pick<Job, 'skills'>): string[] {
   return []
 }
 
-/** Prefer the English translation, fall back to the original. */
+/** Title as posted — the scraper stores the original language, untranslated. */
 export function bestTitle(job: Job): string {
-  return job.title_en || job.title || 'Untitled project'
+  return job.title || 'Untitled project'
 }
 
 export function bestDescription(job: Job): string {
-  return job.description_en || job.description || ''
+  return job.description || ''
 }
 
 export function pct(part: number, whole: number): number {

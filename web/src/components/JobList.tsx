@@ -1,4 +1,4 @@
-import type { Bid, Job } from '../types'
+import type { AskRecord, Job } from '../types'
 import JobRow from './JobRow'
 
 interface JobListProps {
@@ -10,7 +10,9 @@ interface JobListProps {
   selectable?: boolean
   selectedIds?: Set<string>
   onToggleSelect?: (id: string) => void
-  bidStatuses?: Map<string, Bid>
+  asks?: Map<string, AskRecord>
+  /** Shown instead of the default hint when the list is empty. */
+  emptyHint?: string
 }
 
 const SKELETON_KEYS = ['s0', 's1', 's2', 's3', 's4', 's5']
@@ -24,7 +26,8 @@ export default function JobList({
   selectable = false,
   selectedIds,
   onToggleSelect,
-  bidStatuses,
+  asks,
+  emptyHint,
 }: JobListProps) {
   if (loading && jobs.length === 0) {
     return (
@@ -47,7 +50,8 @@ export default function JobList({
         </div>
         <div className="mt-3 font-medium text-content">No jobs here yet</div>
         <div className="mt-1 text-sm text-subtle">
-          The scraper stores only projects that pass the country / price / payer filters.
+          {emptyHint ??
+            'The scraper stores only projects that pass the country / price / payer filters.'}
         </div>
       </div>
     )
@@ -65,7 +69,7 @@ export default function JobList({
           selectable={selectable}
           selected={selectedIds?.has(job.id) ?? false}
           onToggleSelect={onToggleSelect}
-          bidStatus={bidStatuses?.get(job.id)?.status}
+          ask={asks?.get(job.id)}
         />
       ))}
     </div>

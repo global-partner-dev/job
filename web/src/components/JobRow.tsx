@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent, type MouseEvent } from 'react'
-import type { Bid, Job } from '../types'
+import type { AskRecord, AskStatus, Job } from '../types'
 import {
   timeAgo,
   bestTitle,
@@ -21,15 +21,15 @@ interface JobRowProps {
   selectable?: boolean
   selected?: boolean
   onToggleSelect?: (id: string) => void
-  bidStatus?: Bid['status']
+  ask?: AskRecord
 }
 
-const BID_STATUS: Record<Bid['status'], { label: string; tone: PaletteToken }> = {
-  locked: { label: 'Queued', tone: 'warning' },
-  placing: { label: 'Placing…', tone: 'info' },
-  placed: { label: '✓ Bid placed', tone: 'success' },
-  manual: { label: 'Prepared', tone: 'info' },
-  failed: { label: 'Bid failed', tone: 'danger' },
+const ASK_STATUS: Record<AskStatus, { label: string; tone: PaletteToken }> = {
+  queued: { label: 'Queued', tone: 'warning' },
+  preparing: { label: 'Writing…', tone: 'info' },
+  prepared: { label: '✎ Ready to send', tone: 'info' },
+  sent: { label: '✓ Question sent', tone: 'success' },
+  failed: { label: 'Failed', tone: 'danger' },
   skipped: { label: 'Skipped', tone: 'low' },
 }
 
@@ -42,7 +42,7 @@ export default function JobRow({
   selectable = false,
   selected = false,
   onToggleSelect,
-  bidStatus,
+  ask,
 }: JobRowProps) {
   const [expanded, setExpanded] = useState(false)
 
@@ -56,7 +56,7 @@ export default function JobRow({
   }
 
   const rating = job.client_rating != null ? job.client_rating.toFixed(1) : null
-  const status = bidStatus ? BID_STATUS[bidStatus] : null
+  const status = ask ? ASK_STATUS[ask.status] : null
 
   const lrHours = lastReplyHours(job.client_last_reply)
   const lrTone: PaletteToken = lrHours == null ? 'low' : lrHours <= 6 ? 'good' : lrHours <= 24 ? 'fair' : 'low'
@@ -92,7 +92,7 @@ export default function JobRow({
             checked={selected}
             onChange={handleSelect}
             className="h-4 w-4 shrink-0 cursor-pointer accent-primary"
-            aria-label="Select for bidding"
+            aria-label="Select project"
           />
         )}
 
@@ -190,6 +190,23 @@ export default function JobRow({
               <div className="stat-label mb-1">AI analysis</div>
               <AiSummary text={job.ai_summary} />
             </div>
+          )}
+
+          {ask?.question && (
+            <div>
+              <div className="stat-label mb-1">
+                {ask.status === 'sent' ? 'Question you sent' : 'Question ready to send'}
+              </div>
+              <p className="whitespace-pre-line rounded-md border border-border/60 bg-surface px-3 py-2 text-sm leading-relaxed text-content">
+                {ask.question}
+              </p>
+            </div>
+          )}
+
+          {ask?.status === 'failed' && ask.error && (
+            <p className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">
+              {ask.error}
+            </p>
           )}
 
           <div>

@@ -1,4 +1,4 @@
-/** First given name from Workana display, e.g. "Roberto B. A." -> "Roberto". */
+/** First given name from a Workana display name, e.g. "Roberto B. A." -> "Roberto". */
 export function clientFirstName(displayName) {
   const trimmed = (displayName || '').trim();
   if (!trimmed || /^unknown$/i.test(trimmed)) return 'Unknown';
@@ -7,8 +7,8 @@ export function clientFirstName(displayName) {
   return first.replace(/[,;:.]+$/g, '') || 'Unknown';
 }
 
-/** Replace full Workana display name if the model still used it in the opening. */
-export function enforceClientFirstNameInProposal(text, displayName, firstName) {
+/** Replace the full Workana display name if the model still used it. */
+export function enforceClientFirstName(text, displayName, firstName) {
   if (!text || !firstName || firstName === 'Unknown') return text;
   let out = text;
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -23,8 +23,8 @@ export function enforceClientFirstNameInProposal(text, displayName, firstName) {
   return out;
 }
 
-/** Normalize proposal whitespace while keeping section breaks and bullet lists. */
-export function normalizeProposalText(text) {
+/** Normalize whitespace while keeping paragraph breaks. */
+export function normalizeMessageText(text) {
   return (text || '')
     .replace(/\r\n/g, '\n')
     .replace(/[ \t]+\n/g, '\n')
@@ -33,8 +33,14 @@ export function normalizeProposalText(text) {
     .trim();
 }
 
-/** @param {{ apiKey: string, model: string, systemPrompt: string, portfolioUrl?: string, project: object }} opts */
-export async function generateProposal({ apiKey, model, systemPrompt, portfolioUrl, project }) {
+/**
+ * Write the short clarifying question for one project.
+ * @param {{ apiKey: string, model: string, systemPrompt: string, portfolioUrl?: string, project: object }} opts
+ * @returns {Promise<string>}
+ */
+export async function generateQuestion({ apiKey, model, systemPrompt, portfolioUrl, project }) {
+  if (!apiKey) throw new Error('No OpenAI API key set — add one in AskBot settings.');
+
   const displayName = (project.clientName || '').trim();
   const firstName = clientFirstName(displayName);
   const userContent = [
@@ -44,9 +50,9 @@ export async function generateProposal({ apiKey, model, systemPrompt, portfolioU
     `Country: ${project.country}`,
     `Skills: ${(project.skills || []).join(', ')}`,
     portfolioUrl
-      ? `Portfolio link to reference naturally, exactly once: ${portfolioUrl}`
+      ? `Portfolio link you may reference at most once, only if it fits naturally: ${portfolioUrl}`
       : 'No portfolio link provided — do not invent or mention one.',
-    'IMPORTANT: never reveal, invent, or sign your own name.',
+    'IMPORTANT: never reveal, invent, or sign your own name. Never mention price or budget.',
     '',
     'Description:',
     project.description,
@@ -67,7 +73,7 @@ export async function generateProposal({ apiKey, model, systemPrompt, portfolioU
           { role: 'user', content: userContent },
         ],
         temperature: 0.7,
-        max_tokens: 2500,
+        max_tokens: 600,
       }),
     });
   } catch (e) {
@@ -80,10 +86,7 @@ export async function generateProposal({ apiKey, model, systemPrompt, portfolioU
   }
 
   const data = await res.json();
-  const raw = normalizeProposalText(data.choices?.[0]?.message?.content?.trim());
+  const raw = normalizeMessageText(data.choices?.[0]?.message?.content?.trim());
   if (!raw) throw new Error('Empty response from OpenAI');
-  return enforceClientFirstNameInProposal(raw, displayName, firstName);
+  return enforceClientFirstName(raw, displayName, firstName);
 }
-
-/** @deprecated Use generateProposal */
-export const generateQuestion = generateProposal;

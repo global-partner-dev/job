@@ -72,7 +72,7 @@ export default function AuthScreen() {
           </h1>
           <p className="mt-1 text-sm text-subtle">
             {mode === 'signin'
-              ? 'Access the dashboard and BidBot.'
+              ? 'Access the dashboard and AskBot.'
               : 'New accounts need admin approval before access.'}
           </p>
 

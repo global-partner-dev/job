@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Workana Radar BidBot",
-  "version": "2.0.0",
-  "description": "Places Workana bids (proposal + OpenAI-computed price + delivery) for projects you select in the Workana Radar dashboard.",
+  "name": "Workana Radar AskBot",
+  "version": "3.0.0",
+  "description": "Writes an OpenAI clarifying question for the newest Workana projects and opens each one pre-filled on Workana's \"Ask a question\" form — you press Send.",
   "permissions": ["storage", "cookies", "tabs"],
   "host_permissions": [
     "https://www.workana.com/*",
@@ -15,7 +15,7 @@
   },
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Workana Radar BidBot"
+    "default_title": "Workana Radar AskBot"
   },
   "content_scripts": [
     {
@@ -29,14 +29,14 @@
     },
     {
       "matches": [
-        "https://www.workana.com/messages/bid/*",
-        "https://www.workana.com/es/messages/bid/*",
-        "https://www.workana.com/pt/messages/bid/*",
+        "https://www.workana.com/messages/*",
+        "https://www.workana.com/es/messages/*",
+        "https://www.workana.com/pt/messages/*",
         "https://www.workana.com/inbox/*",
         "https://www.workana.com/es/inbox/*",
         "https://www.workana.com/pt/inbox/*"
       ],
-      "js": ["content/workana-bid.js", "content/workana-fill.js"],
+      "js": ["content/workana-question.js"],
       "run_at": "document_idle"
     }
   ],

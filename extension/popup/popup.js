@@ -7,7 +7,7 @@ function escapeHtml(s) {
 }
 
 function lineFor(e) {
-  if (e.type === 'bid') return `Bid placed: ${e.title || e.slug || ''}`;
+  if (e.type === 'ask') return `Question sent: ${e.title || e.slug || ''}`;
   if (e.type === 'error') return `Error: ${e.reason || e.title || ''}`;
   return `${e.title || e.slug || 'Info'}: ${e.reason || ''}`;
 }
