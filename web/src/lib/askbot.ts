@@ -16,11 +16,12 @@ export interface AskBotSettings {
   model: string
   portfolioUrl: string
   /**
-   * Only ask about projects with a budget >= this (0 = no extra floor; the
-   * scraper already stores only $101+). Lets you narrow the queue without
-   * re-scraping.
+   * Only queue projects whose posted budget overlaps [minBudget, maxBudget].
+   * 0 / null mean "no bound on that side"; the scraper already stores only
+   * $101+. Lets you narrow the queue without re-scraping.
    */
   minBudget: number
+  maxBudget: number | null
   /** Random pause after the question is written, before the tab opens. */
   genDelayMinSec: number
   genDelayMaxSec: number
@@ -58,6 +59,7 @@ export const DEFAULT_ASKBOT_SETTINGS: AskBotSettings = {
   model: 'gpt-4o-mini',
   portfolioUrl: '',
   minBudget: 0,
+  maxBudget: null,
   genDelayMinSec: 2,
   genDelayMaxSec: 5,
   gapDelayMinSec: 5,

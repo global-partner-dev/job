@@ -84,15 +84,31 @@ export function lastReplyHours(text: string | null | undefined): number | null {
 }
 
 /**
- * Whether a job's budget meets a minimum (for the bid-time price filter).
- * Hourly and no-budget jobs are kept (their "budget" isn't a fixed total).
+ * Whether a job's posted budget overlaps the range [min, max].
+ *
+ * A job's own budget is usually a range too ("USD 500 - 1,000"), so this is an
+ * interval-overlap test, not a point comparison: a $500–1,000 project shows up
+ * under both "$250 – $500" and "$500 – $1,000" because it genuinely could land
+ * in either. `max = null` means no ceiling.
+ *
+ * Hourly and no-budget jobs always pass — their "budget" isn't a fixed total,
+ * so excluding them on a total would be misleading.
  */
-export function jobMeetsMinBudget(job: Job, min: number): boolean {
-  if (min <= 0) return true
+export function jobInBudgetRange(job: Job, min: number, max: number | null): boolean {
+  const hasFloor = min > 0
+  const hasCeiling = max != null && Number.isFinite(max)
+  if (!hasFloor && !hasCeiling) return true
+
   if (job.budget_type === 'hourly') return true
-  const ceiling = job.budget_max ?? job.budget_min
-  if (ceiling == null) return true
-  return ceiling >= min
+  if (job.budget_min == null && job.budget_max == null) return true
+
+  // "Less than USD X" parses to (min=null, max=X): treat the floor as 0.
+  const jobLow = job.budget_min ?? 0
+  const jobHigh = job.budget_max ?? Infinity
+
+  if (hasCeiling && jobLow > (max as number)) return false
+  if (hasFloor && jobHigh < min) return false
+  return true
 }
 
 export function absoluteUrl(job: Job): string {

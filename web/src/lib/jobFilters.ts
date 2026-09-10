@@ -1,6 +1,6 @@
 import type { AskRecord, AskStatus, Job } from '../types'
 import { flagFor } from './flags'
-import { jobMeetsMinBudget } from './format'
+import { jobInBudgetRange } from './format'
 
 /**
  * Dashboard-side filtering.
@@ -10,31 +10,70 @@ import { jobMeetsMinBudget } from './format'
  * floor, non-payer exclusion, AI category) — see parsers/filters.py.
  */
 
-export type BudgetFloor = 0 | 250 | 500 | 1000 | 2500
 export type StatusFilter = 'all' | 'unasked' | 'prepared' | 'sent' | 'failed'
 export type SortKey = 'newest' | 'budget' | 'fewest-bids' | 'replies'
 
+/** A named budget interval. `max: null` means "no upper bound". */
+export interface BudgetBand {
+  id: string
+  label: string
+  min: number
+  max: number | null
+}
+
+/** Picked so the bands butt up against each other with no gaps. */
+export const BUDGET_BANDS: BudgetBand[] = [
+  { id: 'any', label: 'Any budget', min: 0, max: null },
+  { id: '101-250', label: '$101 – $250', min: 101, max: 250 },
+  { id: '250-500', label: '$250 – $500', min: 250, max: 500 },
+  { id: '500-1000', label: '$500 – $1,000', min: 500, max: 1000 },
+  { id: '1000-2500', label: '$1,000 – $2,500', min: 1000, max: 2500 },
+  { id: '2500-5000', label: '$2,500 – $5,000', min: 2500, max: 5000 },
+  { id: '5000+', label: '$5,000 and up', min: 5000, max: null },
+]
+
+/** Sentinel band id that switches the filter to the two number inputs. */
+export const CUSTOM_BUDGET = 'custom'
+
 export interface JobFilterState {
   country: string // '' = any
-  budget: BudgetFloor
+  /** A BudgetBand id, or CUSTOM_BUDGET to use budgetMin/budgetMax. */
+  budget: string
+  budgetMin: number
+  budgetMax: number | null
   status: StatusFilter
   sort: SortKey
 }
 
 export const DEFAULT_FILTERS: JobFilterState = {
   country: '',
-  budget: 0,
+  budget: 'any',
+  budgetMin: 0,
+  budgetMax: null,
   status: 'all',
   sort: 'newest',
 }
 
-export const BUDGET_OPTIONS: { value: BudgetFloor; label: string }[] = [
-  { value: 0, label: 'Any budget' },
-  { value: 250, label: '$250+' },
-  { value: 500, label: '$500+' },
-  { value: 1000, label: '$1,000+' },
-  { value: 2500, label: '$2,500+' },
-]
+/** The interval the current selection actually means. */
+export function resolveBudgetRange(filters: JobFilterState): { min: number; max: number | null } {
+  if (filters.budget === CUSTOM_BUDGET) {
+    const min = Math.max(0, filters.budgetMin || 0)
+    const max = filters.budgetMax == null ? null : Math.max(min, filters.budgetMax)
+    return { min, max }
+  }
+  const band = BUDGET_BANDS.find((b) => b.id === filters.budget)
+  return band ? { min: band.min, max: band.max } : { min: 0, max: null }
+}
+
+/** Human-readable form of the active interval, for the filter summary line. */
+export function budgetRangeLabel(filters: JobFilterState): string | null {
+  const { min, max } = resolveBudgetRange(filters)
+  if (min <= 0 && max == null) return null
+  const fmt = (n: number) => `$${n.toLocaleString()}`
+  if (max == null) return `${fmt(min)} and up`
+  if (min <= 0) return `up to ${fmt(max)}`
+  return `${fmt(min)} – ${fmt(max)}`
+}
 
 export const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'Any status' },
@@ -111,9 +150,10 @@ export function applyJobFilters(
   filters: JobFilterState,
   asks: Map<string, AskRecord>,
 ): Job[] {
+  const { min, max } = resolveBudgetRange(filters)
   const matched = jobs.filter((job) => {
     if (filters.country && job.client_country !== filters.country) return false
-    if (!jobMeetsMinBudget(job, filters.budget)) return false
+    if (!jobInBudgetRange(job, min, max)) return false
     if (!statusMatches(filters.status, asks.get(job.id)?.status)) return false
     return true
   })
@@ -123,7 +163,7 @@ export function applyJobFilters(
 export function activeFilterCount(filters: JobFilterState): number {
   let n = 0
   if (filters.country) n++
-  if (filters.budget !== 0) n++
+  if (budgetRangeLabel(filters)) n++
   if (filters.status !== 'all') n++
   if (filters.sort !== 'newest') n++
   return n

@@ -9,7 +9,7 @@ import { useAskBot } from './hooks/useAskBot'
 import { useAutoAsk } from './hooks/useAutoAsk'
 import { isSupabaseConfigured } from './lib/supabase'
 import { jobToAskJob, type AskPhase } from './lib/askbot'
-import { jobMeetsMinBudget } from './lib/format'
+import { jobInBudgetRange } from './lib/format'
 import { computeStats } from './lib/stats'
 import { latestJobs } from './lib/insights'
 import { applyJobFilters, DEFAULT_FILTERS, type JobFilterState } from './lib/jobFilters'
@@ -109,10 +109,17 @@ function AppShell() {
         (j) =>
           seenAt(j) >= since &&
           asksByJob.get(j.id)?.status !== 'sent' &&
-          jobMeetsMinBudget(j, askbot.settings.minBudget),
+          jobInBudgetRange(j, askbot.settings.minBudget, askbot.settings.maxBudget),
       )
       .sort((a, b) => seenAt(b) - seenAt(a))
-  }, [activeJobs, asksByJob, autoAsk.enabled, autoAsk.enabledAtMs, askbot.settings.minBudget])
+  }, [
+    activeJobs,
+    asksByJob,
+    autoAsk.enabled,
+    autoAsk.enabledAtMs,
+    askbot.settings.minBudget,
+    askbot.settings.maxBudget,
+  ])
 
   // While auto-ask runs the feed IS the queue; otherwise it's the whole archive.
   const feedBase = autoAsk.enabled ? queue : activeJobs

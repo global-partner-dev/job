@@ -151,9 +151,12 @@ npm run typecheck      # optional: strict TS check
 ### Dashboard features
 
 - **Live feed** — new jobs appear instantly via Supabase realtime (with a "new" pulse).
-- **Dropdown filters** — country, minimum budget, question status, and sort order, all
-  picked from lists. These narrow what *you* see; the archive filters above still decide
-  what gets stored at all.
+- **Dropdown filters** — country, budget **range**, question status, and sort order, all
+  picked from lists. Budget offers preset bands ($101–250, $250–500, $500–1,000, …) plus a
+  **Custom range** with your own min/max; leave a side empty for no bound. Matching is
+  interval *overlap*, so a $500–1,000 project appears under both "$250–500" and
+  "$500–1,000". These narrow what *you* see; the archive filters above still decide what
+  gets stored at all.
 - **Auto-ask toggle** — one switch. See below.
 - **Stats + country breakdown**, **saved jobs** (localStorage), light/dark theme.
 
@@ -186,7 +189,7 @@ Flip it off and the feed goes back to showing the whole archive.
 
 | Setting              | What it does                                                    |
 | -------------------- | --------------------------------------------------------------- |
-| Queue budget floor   | extra minimum budget on top of the archive's $101                |
+| Queue budget range   | min/max on top of the archive's $101 floor; empty side = no bound |
 | Before opening       | random pause after the question is written, before the tab opens |
 | Between projects     | random pause between one project and the next                    |
 | Wait to press Send   | how long the queue waits for you before moving on                |

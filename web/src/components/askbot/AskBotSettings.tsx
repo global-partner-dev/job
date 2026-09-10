@@ -96,24 +96,41 @@ export default function AskBotSettingsDrawer({
           </section>
 
           <section className="space-y-3">
-            <h3 className="stat-label">Queue filter</h3>
-            <div>
-              <label className="text-xs text-muted">Only queue projects with budget ≥ (USD)</label>
-              <input
-                className="input mt-1"
-                type="number"
-                min={0}
-                step={50}
-                value={settings.minBudget || ''}
-                placeholder="0 = no extra floor"
-                onChange={(e) => set('minBudget', num(e.target.value, 0))}
-              />
-              <p className="mt-1 text-[11px] text-subtle">
-                On top of the archive filters (Americas + Spain/Portugal, $101+, payers only),
-                which run in the scraper and are unchanged. Hourly and budget-less projects are
-                always kept.
-              </p>
+            <h3 className="stat-label">Queue budget range</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-xs text-muted">
+                Min (USD)
+                <input
+                  className="input mt-1"
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={settings.minBudget || ''}
+                  placeholder="No floor"
+                  onChange={(e) => set('minBudget', num(e.target.value, 0))}
+                />
+              </label>
+              <label className="text-xs text-muted">
+                Max (USD)
+                <input
+                  className="input mt-1"
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={settings.maxBudget ?? ''}
+                  placeholder="No ceiling"
+                  onChange={(e) =>
+                    set('maxBudget', e.target.value === '' ? null : num(e.target.value, 0))
+                  }
+                />
+              </label>
             </div>
+            <p className="text-[11px] text-subtle">
+              Queues projects whose posted budget <b>overlaps</b> this range — a $500–1,000
+              project matches a 250–500 range too. Leave a side empty for no bound. On top of the
+              archive filters (Americas + Spain/Portugal, $101+, payers only), which run in the
+              scraper and are unchanged. Hourly and budget-less projects are always kept.
+            </p>
           </section>
 
           <section className="space-y-3">
