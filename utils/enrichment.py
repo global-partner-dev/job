@@ -1,49 +1,21 @@
 """
-AI enrichment for scraped jobs.
+AI category filter for scraped jobs.
 
-Adds an OpenAI "AI analysis" summary to a job dict so it can be stored in
-Supabase and surfaced in the web app. The summary is written in English even
-when the source post is in Spanish/Portuguese, so no translation step is needed.
+The scrape pipeline stores project text exactly as posted — no translation and
+no generated summary. The only thing the model is asked is a yes/no triage
+question: is this one of the project types worth keeping?
 """
 from typing import Dict, Optional
 
-from utils.openai_summarizer import OpenAISummarizer
-
-
-def enrich_job_with_ai(
-    job: Dict,
-    summarizer: Optional[OpenAISummarizer] = None,
-) -> Dict:
-    """
-    Populate ``ai_summary`` on the job from its title + description.
-
-    The model returns a concise English paragraph (with ``**bold**`` markdown
-    the frontend renders as emphasis), regardless of the source language.
-    """
-    description = job.get("description") or ""
-
-    if summarizer and summarizer.is_available() and description:
-        try:
-            summary = summarizer.summarize_job(
-                title=job.get("title") or "",
-                description=description,
-            )
-            job["ai_summary"] = summary or None
-        except Exception as exc:  # pragma: no cover - defensive
-            print(f"⚠️  AI summary failed: {exc}")
-            job["ai_summary"] = None
-    else:
-        job.setdefault("ai_summary", None)
-
-    return job
+from utils.openai_classifier import OpenAIClassifier
 
 
 def job_matches_target_category(
     job: Dict,
-    summarizer: Optional[OpenAISummarizer] = None,
+    classifier: Optional[OpenAIClassifier] = None,
 ) -> bool:
     """
-    AI category filter: keep only jobs that are one of the target project types.
+    Keep only jobs that are one of the target project types.
 
     Uses the OpenAI classifier to decide whether the job is a SaaS platform,
     a corporate/service website (non-WordPress), a custom CRM/ERP, a Python
@@ -57,12 +29,12 @@ def job_matches_target_category(
     """
     description = job.get("description") or ""
 
-    if not (summarizer and summarizer.is_available() and description):
+    if not (classifier and classifier.is_available() and description):
         job.setdefault("ai_category", None)
         job.setdefault("ai_category_reason", None)
         return False
 
-    verdict = summarizer.classify_job(
+    verdict = classifier.classify_job(
         title=job.get("title") or "",
         description=description,
     )

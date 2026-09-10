@@ -3,15 +3,14 @@ export type BudgetType = 'fixed' | 'hourly' | null
 /**
  * One row of the Supabase `jobs` table.
  *
- * Text is stored exactly as posted (Portuguese / Spanish / English) — the
- * scraper does not translate. `ai_summary` is the one English field: an OpenAI
- * analysis written from the original text.
+ * Text is stored exactly as posted (Portuguese / Spanish / English). The scraper
+ * neither translates nor summarizes — the only AI step is the category filter,
+ * whose verdict is kept out of this type because the UI doesn't show it.
  */
 export interface Job {
   id: string
   title: string | null
   description: string | null
-  ai_summary: string | null
   url: string | null
   posted_date_relative: string | null
   posted_date_timestamp: string | null

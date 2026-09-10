@@ -96,7 +96,6 @@ class SupabaseJobStore:
             "id": job.get("id"),
             "title": job.get("title"),
             "description": job.get("description"),
-            "ai_summary": job.get("ai_summary"),
             "ai_category": job.get("ai_category"),
             "ai_category_reason": job.get("ai_category_reason"),
             "url": job.get("url"),
@@ -146,7 +145,7 @@ class SupabaseJobStore:
             # stored when the job was first seen and enriched. Volatile listing
             # fields (bids, budget, last reply, timestamps) still update.
             for field in ("title", "description",
-                          "ai_summary", "ai_category", "ai_category_reason"):
+                          "ai_category", "ai_category_reason"):
                 record.pop(field, None)
 
         self.client.table(self.JOBS_TABLE).upsert(record).execute()

@@ -20,12 +20,12 @@ from parsers.client_stats import (
     sync_cookies_from_browser,
 )
 from parsers.filters import passes_listing_filters, passes_client_filters
-from utils.enrichment import enrich_job_with_ai, job_matches_target_category
-from utils.openai_summarizer import OpenAISummarizer
+from utils.enrichment import job_matches_target_category
+from utils.openai_classifier import OpenAIClassifier
 from config.settings import AI_CATEGORY_FILTER
 
 
-def run_scrape(db, scraper, summarizer):
+def run_scrape(db, scraper, classifier):
     start_time = time.time()
     scrape_failed = False
 
@@ -102,11 +102,11 @@ def run_scrape(db, scraper, summarizer):
         # (SaaS, corporate/service sites excl. WordPress, custom CRM/ERP,
         # Python apps / API integrations, Shopify). Needs the full description.
         if AI_CATEGORY_FILTER:
-            if summarizer and summarizer.is_available():
+            if classifier and classifier.is_available():
                 matched = []
                 skipped_offtarget = 0
                 for job in new_to_store:
-                    if job_matches_target_category(job, summarizer=summarizer):
+                    if job_matches_target_category(job, classifier=classifier):
                         matched.append(job)
                     else:
                         skipped_offtarget += 1
@@ -115,20 +115,14 @@ def run_scrape(db, scraper, summarizer):
                     f"Passed AI category filter: {len(new_to_store)} | "
                     f"off-target skipped: {skipped_offtarget}"
                 )
-                if summarizer.hard_failure and skipped_offtarget:
+                if classifier.hard_failure and skipped_offtarget:
                     print(
                         f"⚠️  Those {skipped_offtarget} were NOT judged off-target — "
-                        f"{summarizer.hard_failure}. The filter fails closed, so nothing "
+                        f"{classifier.hard_failure}. The filter fails closed, so nothing "
                         "can be stored until this is fixed."
                     )
             else:
-                print("⚠️  AI category filter enabled but summarizer unavailable — skipping filter")
-
-        # AI analysis only for the jobs we will actually store.
-        if summarizer and new_to_store:
-            print("Adding AI analysis...")
-            for job in new_to_store:
-                enrich_job_with_ai(job, summarizer=summarizer)
+                print("⚠️  AI category filter enabled but classifier unavailable — skipping filter")
 
         # Save: insert new (filtered) + refresh existing (volatile fields only).
         new_jobs = 0
@@ -185,17 +179,17 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    summarizer = None
+    classifier = None
     try:
-        summarizer = OpenAISummarizer(api_key=OPENAI_API_KEY, model=OPENAI_MODEL)
-        if summarizer.is_available():
-            print(f"[2/3] OpenAI summarizer initialized ✅ ({OPENAI_MODEL})")
+        classifier = OpenAIClassifier(api_key=OPENAI_API_KEY, model=OPENAI_MODEL)
+        if classifier.is_available():
+            print(f"[2/3] OpenAI category classifier initialized ✅ ({OPENAI_MODEL})")
         else:
-            print("[2/3] OpenAI summarizer disabled (no API key)")
-            summarizer = None
+            print("[2/3] OpenAI category classifier disabled (no API key)")
+            classifier = None
     except Exception as e:
-        print(f"[2/3] OpenAI summarizer error: {e}")
-        summarizer = None
+        print(f"[2/3] OpenAI category classifier error: {e}")
+        classifier = None
 
     print("[3/3] Initializing scraper...")
     scraper = WorkanaScraper()
@@ -222,11 +216,11 @@ def main():
                 print(f"Run #{run_count}")
                 print(f"{'='*60}")
 
-                run_scrape(db, scraper, summarizer)
+                run_scrape(db, scraper, classifier)
 
-                if summarizer and summarizer.hard_failure:
+                if classifier and classifier.hard_failure:
                     print("\n" + "=" * 60)
-                    print(f"❌ Stopping: {summarizer.hard_failure}")
+                    print(f"❌ Stopping: {classifier.hard_failure}")
                     print("=" * 60)
                     print("   Every scraped job is being discarded by the AI category filter,")
                     print("   which fails closed when it cannot get a verdict. Either:")
@@ -248,7 +242,7 @@ def main():
 
                 time.sleep(SCRAPE_INTERVAL)
         else:
-            run_scrape(db, scraper, summarizer)
+            run_scrape(db, scraper, classifier)
             print("\n✅ Scraping complete!")
 
     except KeyboardInterrupt:

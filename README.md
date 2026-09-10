@@ -3,8 +3,7 @@
 A three-part system for monitoring freelance opportunities on [Workana](https://www.workana.com):
 
 1. **Python scraper** (`/`) — runs on your VPS, scrapes IT/programming jobs, enriches
-   them with client stats and an OpenAI "AI analysis", and stores everything in
-   **Supabase** (Postgres).
+   them with client stats, and stores everything in **Supabase** (Postgres).
 2. **React dashboard** (`web/`) — a live monitoring UI deployed on **Vercel** that reads
    from Supabase in real time, with dropdown filters and the auto-ask toggle.
 3. **AskBot extension** (`extension/`) — a Chrome extension that writes a short
@@ -14,7 +13,7 @@ A three-part system for monitoring freelance opportunities on [Workana](https://
 ```
 Workana ──► Python scraper (VPS) ──► Supabase (Postgres) ──► React dashboard (Vercel)
              Selenium + requests        service_role key         anon key (RLS)
-             + OpenAI analysis           realtime enabled         live updates
+             + AI category filter        realtime enabled         live updates
                                                                        │ auto-ask toggle
                                                                        ▼
                                                           AskBot extension (Chrome)
@@ -22,8 +21,10 @@ Workana ──► Python scraper (VPS) ──► Supabase (Postgres) ──► R
                                                           Workana pre-filled → you Send
 ```
 
-> **No translation.** Project details are stored exactly as posted (PT / ES / EN). The one
-> English field is `ai_summary` — an OpenAI analysis written from the original text.
+> **No translation, no summarizing.** Project details are stored exactly as posted
+> (PT / ES / EN). The scraper's only AI step is the **category filter** — a yes/no triage
+> call that decides whether a project is worth keeping. Set `AI_CATEGORY_FILTER=0` and the
+> scraper makes zero OpenAI calls.
 >
 > **No place-bid.** The old automated bidding flow was removed; AskBot only ever pre-fills
 > Workana's question form.
@@ -41,6 +42,8 @@ Workana ──► Python scraper (VPS) ──► Supabase (Postgres) ──► R
    3. [`web/supabase/03_cleanup.sql`](web/supabase/03_cleanup.sql) — daily pg_cron sweep.
    4. [`web/supabase/04_ask_questions.sql`](web/supabase/04_ask_questions.sql) —
       migrates the `bids` table from the old place-bid flow to the ask-a-question flow.
+   5. [`web/supabase/05_drop_ai_summary.sql`](web/supabase/05_drop_ai_summary.sql) —
+      retires the `ai_summary` column.
       Each file is idempotent, so re-running is safe.
 3. From **Settings → API**, grab:
    - **Project URL** — used by both the scraper and the web app.
@@ -66,7 +69,7 @@ cp .env.template .env
 #   edit .env →
 #     SUPABASE_URL=...              (Project URL)
 #     SUPABASE_SERVICE_KEY=...      (service_role key)
-#     OPENAI_API_KEY=...            (optional — AI analysis summary)
+#     OPENAI_API_KEY=...            (optional — AI category filter only)
 #     OPENAI_MODEL=gpt-4o-mini
 
 # Run
@@ -82,8 +85,8 @@ Behavior is controlled in [`config/settings.py`](config/settings.py):
 | `MAX_PAGES`        | `1`            | Pages per run (`None` = no limit)                   |
 | `SCRAPE_INTERVAL`  | `30`           | Seconds between runs (`None` = run once and exit)   |
 
-Only **new** jobs (never-before-seen IDs) are enriched with client stats and AI
-analysis, so re-scraping stays cheap. Every run also records a row in
+Only **new** jobs (never-before-seen IDs) are enriched with client stats and run through
+the category filter, so re-scraping stays cheap. Every run also records a row in
 `scrape_history` (powering the dashboard's activity chart).
 
 ### Run it continuously on the VPS
@@ -95,8 +98,10 @@ nohup python main.py > scraper.log 2>&1 &
 # or a systemd unit (recommended) — set WorkingDirectory + the .env, Restart=always
 ```
 
-AI summarization is optional: without the key the scraper still runs and stores the
-project text exactly as posted.
+The category filter is the only OpenAI call in the pipeline. It **fails closed** — a job
+with no verdict is not stored — so a dead API key silently empties the archive. Set
+`AI_CATEGORY_FILTER=0` to drop the filter and store everything that passes the country /
+price / payment filters below.
 
 ### Archive filters (unchanged)
 
@@ -202,8 +207,8 @@ Flip it off and the feed goes back to showing the whole archive.
 ├── storage/
 │   └── supabase_store.py       # Supabase (Postgres) store
 ├── utils/
-│   ├── enrichment.py           # AI analysis + AI category filter → job fields
-│   └── openai_summarizer.py    # OpenAI "AI analysis" summary
+│   ├── enrichment.py           # AI category filter → job fields
+│   └── openai_classifier.py    # OpenAI target-type triage (the only AI call)
 ├── extension/                  # AskBot Chrome extension (load unpacked)
 │   ├── background.js           # MV3 worker — runs the ask queue
 │   ├── content/bridge.js       # dashboard ↔ extension bridge

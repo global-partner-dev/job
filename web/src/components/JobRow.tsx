@@ -11,7 +11,6 @@ import {
 } from '../lib/format'
 import { flagFor } from '../lib/flags'
 import { token, type PaletteToken } from '../lib/palette'
-import AiSummary from './AiSummary'
 
 interface JobRowProps {
   job: Job
@@ -185,13 +184,6 @@ export default function JobRow({
       {/* Inline expanded detail */}
       {expanded && (
         <div className="space-y-3 border-t border-border/60 bg-surface-2/40 px-4 py-4 pl-5">
-          {job.ai_summary && (
-            <div>
-              <div className="stat-label mb-1">AI analysis</div>
-              <AiSummary text={job.ai_summary} />
-            </div>
-          )}
-
           {ask?.question && (
             <div>
               <div className="stat-label mb-1">
