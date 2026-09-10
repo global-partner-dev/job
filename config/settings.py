@@ -26,10 +26,23 @@ JOBS_URL = f"{BASE_URL}/jobs"
 DEFAULT_CATEGORY = "it-programming"
 DEFAULT_LANGUAGE = "en,pt,es"  # English, Portuguese, Spanish
 
-# Selenium settings
-HEADLESS = True  # Set to False for debugging
+# Driver settings
+# Workana is behind a Cloudflare managed challenge that a stock Selenium Chrome
+# never passes — headless or not. undetected-chromedriver clears it, but only
+# when Chrome runs headful, so this needs a display (Xvfb on a VPS):
+#     xvfb-run -a python main.py
+# Set USE_UNDETECTED_DRIVER=0 to fall back to the stock driver (expect 403s on
+# job detail pages, and intermittent challenges on the listing).
+USE_UNDETECTED_DRIVER = os.getenv('USE_UNDETECTED_DRIVER', '1').strip().lower() not in ('0', 'false', 'no')
+
+# Only honoured by the stock driver. undetected-chromedriver forces headful,
+# because headless is exactly what Cloudflare detects.
+HEADLESS = os.getenv('HEADLESS', '1').strip().lower() not in ('0', 'false', 'no')
 IMPLICIT_WAIT = 3  # seconds (reduced from 10)
 PAGE_LOAD_TIMEOUT = 20  # seconds (reduced from 30)
+# Clearing a Cloudflare challenge takes ~30s on a cold browser, so the stock
+# 20s timeout would abort mid-challenge and leave the driver on a blank tab.
+PAGE_LOAD_TIMEOUT_UNDETECTED = int(os.getenv('PAGE_LOAD_TIMEOUT_UNDETECTED', '75'))
 EXPLICIT_WAIT_TIMEOUT = 5  # seconds (reduced from 10)
 PAGE_LOAD_RETRIES = int(os.getenv('PAGE_LOAD_RETRIES', '1'))
 

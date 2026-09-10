@@ -54,11 +54,18 @@ Workana ──► Python scraper (VPS) ──► Supabase (Postgres) ──► R
 
 ## 2. Scraper setup (VPS)
 
-Requires Python 3.9+ and a headless Chromium.
+Requires Python 3.9+, Chrome/Chromium, and **Xvfb**.
+
+> **Why Xvfb?** Workana sits behind a Cloudflare managed challenge. A stock Selenium
+> Chrome never clears it — not headless, not headful — which returns 403 on every job
+> detail page (no client stats, and only the ~350-char listing preview instead of the full
+> brief). `undetected-chromedriver` does clear it, but **only running headful**, since
+> headless is exactly what the challenge detects. On a headless VPS that means a virtual
+> display. Run the scraper with `xvfb-run -a`.
 
 ```bash
-# System Chromium (Ubuntu/Debian VPS)
-sudo apt install -y chromium-browser chromium-chromedriver
+# System Chromium + virtual display (Ubuntu/Debian VPS)
+sudo apt install -y chromium-browser chromium-chromedriver xvfb
 
 # Python deps
 python3 -m venv .venv && source .venv/bin/activate
@@ -72,18 +79,24 @@ cp .env.template .env
 #     OPENAI_API_KEY=...            (optional — AI category filter only)
 #     OPENAI_MODEL=gpt-4o-mini
 
-# Run
-python main.py
+# Run (xvfb-run gives Chrome the display it needs)
+xvfb-run -a python main.py
 ```
+
+If you must run without a display, set `USE_UNDETECTED_DRIVER=0` — the scraper falls back
+to the stock driver, still collects the listing, and tells you which detail pages it could
+not reach. Jobs whose full brief is unavailable are **kept unjudged** rather than discarded
+(see the AI category filter below).
 
 Behavior is controlled in [`config/settings.py`](config/settings.py):
 
-| Setting            | Default        | Meaning                                            |
-| ------------------ | -------------- | -------------------------------------------------- |
-| `DEFAULT_CATEGORY` | `it-programming` | Workana category to scrape                        |
-| `DEFAULT_LANGUAGE` | `en,pt,es`     | Job languages                                       |
-| `MAX_PAGES`        | `1`            | Pages per run (`None` = no limit)                   |
-| `SCRAPE_INTERVAL`  | `30`           | Seconds between runs (`None` = run once and exit)   |
+| Setting                  | Default          | Meaning                                           |
+| ------------------------ | ---------------- | ------------------------------------------------- |
+| `DEFAULT_CATEGORY`       | `it-programming` | Workana category to scrape                        |
+| `DEFAULT_LANGUAGE`       | `en,pt,es`       | Job languages                                     |
+| `MAX_PAGES`              | `1`              | Pages per run (`None` = no limit)                 |
+| `SCRAPE_INTERVAL`        | `30`             | Seconds between runs (`None` = run once and exit) |
+| `USE_UNDETECTED_DRIVER`  | `1`              | Cloudflare-capable driver; needs a display        |
 
 Only **new** jobs (never-before-seen IDs) are enriched with client stats and run through
 the category filter, so re-scraping stays cheap. Every run also records a row in
@@ -98,10 +111,19 @@ nohup python main.py > scraper.log 2>&1 &
 # or a systemd unit (recommended) — set WorkingDirectory + the .env, Restart=always
 ```
 
-The category filter is the only OpenAI call in the pipeline. It **fails closed** — a job
-with no verdict is not stored — so a dead API key silently empties the archive. Set
-`AI_CATEGORY_FILTER=0` to drop the filter and store everything that passes the country /
-price / payment filters below.
+The category filter is the only OpenAI call in the pipeline, and it resolves its two
+"no verdict" cases in deliberately opposite directions:
+
+- **Full brief unavailable** (detail page blocked, only the listing preview) — the job is
+  **kept, unjudged, with no API call**. Classifying a project from a tenth of its text is a
+  guess, not a filter, so nothing is discarded on data the model never saw. Those rows get
+  `ai_category = 'unjudged_truncated'`.
+- **Classifier unavailable or API error** — the input was fine but no verdict came back, so
+  the job **fails closed**: skipped this run, re-evaluated on a later one. A dead API key
+  therefore empties the archive rather than polluting it.
+
+Set `AI_CATEGORY_FILTER=0` to drop the filter entirely and store everything that passes the
+country / price / payment filters below.
 
 ### Archive filters (unchanged)
 

@@ -285,6 +285,29 @@ def _fetch_job_html(job_url: str) -> Optional[str]:
     return html
 
 
+# Markers Workana leaves when the listing shows only a preview of the brief.
+_TRUNCATION_MARKERS = ("view more", "ver más", "ver mas", "ver mais")
+MIN_FULL_DESCRIPTION_CHARS = 500
+
+
+def is_truncated_description(description: Optional[str]) -> bool:
+    """
+    Whether this text is the listing preview rather than the full brief.
+
+    Listing cards carry ~350 chars ending in "View more"; a real brief runs to
+    thousands. Anything short or carrying the marker is treated as incomplete,
+    which is the safe direction: callers keep the job instead of judging it on
+    text they cannot see.
+    """
+    text = description or ""
+    if not text:
+        return True
+    lowered = text.lower()
+    if any(marker in lowered for marker in _TRUNCATION_MARKERS):
+        return True
+    return len(text) < MIN_FULL_DESCRIPTION_CHARS
+
+
 def _client_stats_complete(job: Dict) -> bool:
     return (
         job.get("client_published_projects") is not None

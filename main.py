@@ -20,7 +20,7 @@ from parsers.client_stats import (
     sync_cookies_from_browser,
 )
 from parsers.filters import passes_listing_filters, passes_client_filters
-from utils.enrichment import job_matches_target_category
+from utils.enrichment import UNJUDGED, job_matches_target_category
 from utils.openai_classifier import OpenAIClassifier
 from config.settings import AI_CATEGORY_FILTER
 
@@ -105,9 +105,12 @@ def run_scrape(db, scraper, classifier):
             if classifier and classifier.is_available():
                 matched = []
                 skipped_offtarget = 0
+                kept_unjudged = 0
                 for job in new_to_store:
                     if job_matches_target_category(job, classifier=classifier):
                         matched.append(job)
+                        if job.get("ai_category") == UNJUDGED:
+                            kept_unjudged += 1
                     else:
                         skipped_offtarget += 1
                 new_to_store = matched
@@ -115,6 +118,11 @@ def run_scrape(db, scraper, classifier):
                     f"Passed AI category filter: {len(new_to_store)} | "
                     f"off-target skipped: {skipped_offtarget}"
                 )
+                if kept_unjudged:
+                    print(
+                        f"   ({kept_unjudged} kept unjudged — only the listing preview was "
+                        "available, so no AI verdict was taken)"
+                    )
                 if classifier.hard_failure and skipped_offtarget:
                     print(
                         f"⚠️  Those {skipped_offtarget} were NOT judged off-target — "

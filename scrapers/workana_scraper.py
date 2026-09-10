@@ -1,7 +1,10 @@
 """
 Selenium-based scraper for Workana job listings
 """
+import os
+import re
 import shutil
+import subprocess
 import time
 import random
 from typing import List, Dict, Optional, Set
@@ -19,9 +22,9 @@ from webdriver_manager.chrome import ChromeDriverManager
 from config.settings import (
     BASE_URL, JOBS_URL, DEFAULT_CATEGORY, DEFAULT_LANGUAGE,
     HEADLESS, IMPLICIT_WAIT, PAGE_LOAD_TIMEOUT, EXPLICIT_WAIT_TIMEOUT,
-    PAGE_LOAD_RETRIES,
+    PAGE_LOAD_RETRIES, PAGE_LOAD_TIMEOUT_UNDETECTED,
     DELAY_BETWEEN_REQUESTS, RANDOM_DELAY_RANGE, MAX_PAGES, STOP_ON_KNOWN_JOB,
-    USER_AGENT, CHROME_OPTIONS
+    USER_AGENT, CHROME_OPTIONS, USE_UNDETECTED_DRIVER
 )
 from config.selectors import SELECTORS
 from parsers.job_parser import parse_job_element_from_html
@@ -67,8 +70,83 @@ class WorkanaScraper:
         except Exception as exc:
             print(f"   Could not read page diagnostics: {exc}")
     
+    @staticmethod
+    def _chrome_binary() -> Optional[str]:
+        return (
+            shutil.which("chromium-browser")
+            or shutil.which("chromium")
+            or shutil.which("google-chrome-stable")
+            or shutil.which("google-chrome")
+        )
+
+    @staticmethod
+    def _chrome_major_version(binary: str) -> Optional[int]:
+        """Major version of the installed Chrome, so UC fetches a matching driver."""
+        try:
+            out = subprocess.run(
+                [binary, "--version"], capture_output=True, text=True, timeout=15
+            ).stdout
+            m = re.search(r"(\d+)\.", out)
+            return int(m.group(1)) if m else None
+        except Exception:
+            return None
+
+    def _setup_undetected_driver(self):
+        """
+        Chrome via undetected-chromedriver, which is the only configuration that
+        clears Workana's Cloudflare challenge on job detail pages.
+
+        It has to run HEADFUL — headless Chrome is precisely what the challenge
+        detects — so a display is required. On a VPS: `xvfb-run -a python main.py`.
+        """
+        import undetected_chromedriver as uc
+
+        if not os.environ.get("DISPLAY"):
+            raise RuntimeError(
+                "undetected-chromedriver needs a display (it must run headful to clear "
+                "Cloudflare), but DISPLAY is not set.\n"
+                "   Start it under a virtual display:  xvfb-run -a python main.py\n"
+                "   (install once with: sudo apt install -y xvfb)\n"
+                "   Or set USE_UNDETECTED_DRIVER=0 to use the stock driver and accept "
+                "403s on job detail pages."
+            )
+
+        options = uc.ChromeOptions()
+        for option in CHROME_OPTIONS:
+            # Never pass --headless here: it is what gets us challenged.
+            if option.startswith("--headless"):
+                continue
+            options.add_argument(option)
+        options.add_argument("--window-size=1920,1080")
+
+        binary = self._chrome_binary()
+        version_main = None
+        if binary:
+            options.binary_location = binary
+            version_main = self._chrome_major_version(binary)
+            print(f"Using Chrome binary: {binary} (major {version_main or 'unknown'})")
+
+        print("Starting undetected-chromedriver (headful, Cloudflare-capable)...")
+        self.driver = uc.Chrome(
+            options=options,
+            headless=False,
+            version_main=version_main,
+            use_subprocess=True,
+        )
+
     def setup_driver(self):
         """Initialize Chrome WebDriver"""
+        if USE_UNDETECTED_DRIVER:
+            self._setup_undetected_driver()
+            self.driver.implicitly_wait(IMPLICIT_WAIT)
+            # A cold browser meeting a Cloudflare challenge needs ~30s; aborting
+            # at 20s leaves the driver parked on a blank tab with no error.
+            self.driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT_UNDETECTED)
+            self.wait = WebDriverWait(self.driver, EXPLICIT_WAIT_TIMEOUT)
+            return
+
+        print("Starting stock Selenium Chrome (USE_UNDETECTED_DRIVER=0) — "
+              "expect Cloudflare 403s on job detail pages.")
         chrome_options = Options()
         
         # Add options
@@ -90,12 +168,7 @@ class WorkanaScraper:
         chrome_options.add_experimental_option("prefs", prefs)
 
         # Prefer system Chrome/Chromium on Linux VPS (apt install chromium-browser)
-        chrome_binary = (
-            shutil.which("chromium-browser")
-            or shutil.which("chromium")
-            or shutil.which("google-chrome-stable")
-            or shutil.which("google-chrome")
-        )
+        chrome_binary = self._chrome_binary()
         if chrome_binary:
             chrome_options.binary_location = chrome_binary
             print(f"Using Chrome binary: {chrome_binary}")

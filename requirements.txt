@@ -5,3 +5,5 @@ lxml>=4.9.0
 requests>=2.31.0
 python-dotenv>=1.0.0
 supabase>=2.4.0
+undetected-chromedriver>=3.5.5
+setuptools<81  # undetected-chromedriver 3.5.5 imports distutils, removed in Python 3.12

@@ -18,21 +18,7 @@ sys.path.insert(0, ".")
 
 from config.settings import SUPABASE_URL, SUPABASE_SERVICE_KEY, DELAY_BETWEEN_REQUESTS
 from supabase import create_client
-from parsers.client_stats import fetch_client_project_stats
-
-
-def is_truncated(desc: str) -> bool:
-    d = desc or ""
-    if not d:
-        return True
-    lowered = d.lower()
-    return (
-        "view more" in lowered
-        or "ver más" in lowered
-        or "ver mas" in lowered
-        or "ver mais" in lowered
-        or len(d) < 500
-    )
+from parsers.client_stats import fetch_client_project_stats, is_truncated_description
 
 
 def main():
@@ -42,7 +28,7 @@ def main():
 
     client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     rows = (client.table("jobs").select("id,url,description").execute()).data or []
-    todo = [r for r in rows if r.get("url") and is_truncated(r.get("description"))]
+    todo = [r for r in rows if r.get("url") and is_truncated_description(r.get("description"))]
     print(f"{len(rows)} jobs in DB · {len(todo)} with truncated descriptions to backfill")
 
     updated = 0
