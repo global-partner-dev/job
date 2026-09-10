@@ -19,16 +19,54 @@ class OpenAISummarizer:
     )
     NO_MATCH = "no_match"
 
+    # Response bodies that mean "this will never succeed until a human fixes
+    # something" — as opposed to a transient rate limit or network blip.
+    HARD_ERROR_MARKERS = (
+        "billing_not_active",
+        "insufficient_quota",
+        "invalid_api_key",
+        "account_deactivated",
+        "model_not_found",
+        "does not exist or you do not have access",
+    )
+
     def __init__(self, api_key: str = None, model: str = "gpt-4o-mini"):
         self.api_key = (api_key or "").strip()
         self.model = (model or "gpt-4o-mini").strip()
         self._available = bool(self.api_key)
+        # Set to a human-readable reason once a non-recoverable API error is
+        # seen, so the caller can stop instead of silently discarding every job.
+        self.hard_failure: Optional[str] = None
 
         if not self._available:
             print("⚠️  Warning: OPENAI_API_KEY not configured; AI summary disabled")
 
     def is_available(self) -> bool:
         return self._available
+
+    def _note_http_error(self, label: str, response) -> None:
+        """Print an API error and remember it if it can never self-recover."""
+        body = (response.text or "")[:200]
+        code = response.status_code
+        print(f"⚠️  OpenAI {label} error: {code} - {body}")
+
+        if self.hard_failure:
+            return
+
+        lowered = body.lower()
+        if code in (401, 403, 404) or any(m in lowered for m in self.HARD_ERROR_MARKERS):
+            if "model" in lowered and ("not_found" in lowered or "does not exist" in lowered):
+                self.hard_failure = (
+                    f"the model '{self.model}' is not available to this API key "
+                    "(check OPENAI_MODEL in .env)"
+                )
+            elif code == 401 or "invalid_api_key" in lowered:
+                self.hard_failure = "the OpenAI API key is invalid (check OPENAI_API_KEY in .env)"
+            else:
+                self.hard_failure = (
+                    "the OpenAI account is not active / out of quota "
+                    "(check billing at platform.openai.com)"
+                )
 
     def summarize_job(
         self,
@@ -83,7 +121,7 @@ class OpenAISummarizer:
                 timeout=25,
             )
             if response.status_code != 200:
-                print(f"⚠️  OpenAI summary error: {response.status_code} - {response.text[:200]}")
+                self._note_http_error("summary", response)
                 return None
 
             data = response.json()
@@ -176,7 +214,7 @@ class OpenAISummarizer:
                 timeout=25,
             )
             if response.status_code != 200:
-                print(f"⚠️  OpenAI classify error: {response.status_code} - {response.text[:200]}")
+                self._note_http_error("classify", response)
                 return None
 
             data = response.json()

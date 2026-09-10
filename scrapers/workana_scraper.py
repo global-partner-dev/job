@@ -343,6 +343,70 @@ class WorkanaScraper:
         
         return all_jobs
     
+    # Markers of a Cloudflare interstitial rather than the real page.
+    CHALLENGE_MARKERS = (
+        "just a moment",
+        "attention required",
+        "challenge-platform",
+        "performing security verification",
+    )
+
+    def _is_challenge_page(self, html: str) -> bool:
+        lowered = (html or "").lower()
+        return any(marker in lowered for marker in self.CHALLENGE_MARKERS)
+
+    def fetch_html(self, url: str, settle_selector: str = None, timeout: int = 30) -> Optional[str]:
+        """
+        Load a URL in the browser and return its HTML once it is the real page.
+
+        Workana puts job detail pages behind a Cloudflare JS challenge, which a
+        plain HTTP request can never pass (the cf_clearance cookie is bound to the
+        browser's own TLS fingerprint, so lending it to `requests` does not work
+        either). The browser solves it, but not instantly — so poll until the
+        interstitial is replaced by real content instead of grabbing the first
+        page_source we see.
+        """
+        if not self.driver:
+            return None
+        try:
+            self.driver.get(url)
+        except TimeoutException:
+            pass  # partial load is fine; the poll below decides
+        except Exception as e:
+            print(f"   Browser fetch failed for {url}: {e}")
+            return None
+
+        deadline = time.time() + timeout
+        html = ""
+        while time.time() < deadline:
+            try:
+                html = self.driver.page_source or ""
+            except Exception as e:
+                print(f"   Browser fetch failed for {url}: {e}")
+                return None
+
+            if not self._is_challenge_page(html):
+                if settle_selector:
+                    try:
+                        self.driver.find_element(By.CSS_SELECTOR, settle_selector)
+                    except NoSuchElementException:
+                        time.sleep(0.5)
+                        continue
+                return html
+            time.sleep(0.75)
+
+        print(f"   Cloudflare challenge did not clear within {timeout}s: {url}")
+        return None
+
+    def get_cookies(self) -> List[Dict]:
+        """Current browser cookies, for priming the plain-HTTP session."""
+        if not self.driver:
+            return []
+        try:
+            return self.driver.get_cookies()
+        except Exception:
+            return []
+
     def close(self):
         """Close the browser"""
         if self.driver:

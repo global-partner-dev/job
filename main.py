@@ -14,7 +14,11 @@ from config.settings import (
 )
 from storage.supabase_store import SupabaseJobStore
 from scrapers.workana_scraper import WorkanaScraper
-from parsers.client_stats import enrich_job_with_client_stats
+from parsers.client_stats import (
+    enrich_job_with_client_stats,
+    set_browser_fetcher,
+    sync_cookies_from_browser,
+)
 from parsers.filters import passes_listing_filters, passes_client_filters
 from utils.enrichment import enrich_job_with_ai, job_matches_target_category
 from utils.openai_summarizer import OpenAISummarizer
@@ -65,11 +69,23 @@ def run_scrape(db, scraper, summarizer):
 
         # Enrich new candidates with client stats + full description (detail page).
         if new_candidates:
-            print("Fetching client project stats from job pages...")
+            # The browser just cleared Workana's WAF for the listing page — lend
+            # those cookies to the plain-HTTP session so detail fetches aren't 403'd.
+            adopted = sync_cookies_from_browser(scraper.get_cookies())
+            print(f"Fetching client project stats from job pages... ({adopted} cookies from browser)")
             for i, job in enumerate(new_candidates, 1):
                 if not job.get('url'):
                     continue
                 enrich_job_with_client_stats(job, delay=i < len(new_candidates))
+
+            missing_stats = sum(
+                1 for j in new_candidates if j.get('client_published_projects') is None
+            )
+            if missing_stats:
+                print(
+                    f"⚠️  {missing_stats}/{len(new_candidates)} job pages returned no client stats — "
+                    "the payment-ability filter cannot judge those and keeps them."
+                )
 
         # Stage 2 — client payment-ability filter (needs the enriched stats).
         new_to_store = []
@@ -99,6 +115,12 @@ def run_scrape(db, scraper, summarizer):
                     f"Passed AI category filter: {len(new_to_store)} | "
                     f"off-target skipped: {skipped_offtarget}"
                 )
+                if summarizer.hard_failure and skipped_offtarget:
+                    print(
+                        f"⚠️  Those {skipped_offtarget} were NOT judged off-target — "
+                        f"{summarizer.hard_failure}. The filter fails closed, so nothing "
+                        "can be stored until this is fixed."
+                    )
             else:
                 print("⚠️  AI category filter enabled but summarizer unavailable — skipping filter")
 
@@ -179,6 +201,8 @@ def main():
     scraper = WorkanaScraper()
     try:
         scraper.setup_driver()
+        # Last-resort fetcher for detail pages the WAF blocks over plain HTTP.
+        set_browser_fetcher(scraper.fetch_html)
     except Exception as e:
         print(f"❌ Failed to start Chrome/Selenium: {e}")
         print("   On Ubuntu VPS, install: apt install -y chromium-browser chromium-chromedriver")
@@ -199,6 +223,17 @@ def main():
                 print(f"{'='*60}")
 
                 run_scrape(db, scraper, summarizer)
+
+                if summarizer and summarizer.hard_failure:
+                    print("\n" + "=" * 60)
+                    print(f"❌ Stopping: {summarizer.hard_failure}")
+                    print("=" * 60)
+                    print("   Every scraped job is being discarded by the AI category filter,")
+                    print("   which fails closed when it cannot get a verdict. Either:")
+                    print("     • fix the OpenAI account/key/model in .env, or")
+                    print("     • set AI_CATEGORY_FILTER=0 in .env to store everything that")
+                    print("       passes the country / price / payment filters.")
+                    break
 
                 if scraper.last_load_failed:
                     try:
@@ -224,8 +259,13 @@ def main():
         traceback.print_exc()
     finally:
         print("\nCleaning up...")
-        scraper.close()
-        db.close()
+        for label, shutdown in (("browser", scraper.close), ("database", db.close)):
+            try:
+                shutdown()
+            except KeyboardInterrupt:
+                print(f"   Skipped {label} shutdown (interrupted)")
+            except Exception as e:
+                print(f"   Could not close {label}: {e}")
         print("Done!")
 
 

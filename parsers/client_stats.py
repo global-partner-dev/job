@@ -1,12 +1,74 @@
 
 import re
 import time
-from typing import Dict, Optional, Tuple, Any
+from typing import Callable, Dict, Optional, Tuple, Any
 
 import requests
 from bs4 import BeautifulSoup
 
-from config.settings import USER_AGENT, DELAY_BETWEEN_REQUESTS
+from config.settings import JOBS_URL, USER_AGENT, DELAY_BETWEEN_REQUESTS
+
+# Workana sits behind a WAF that rejects bare requests calls. A single User-Agent
+# is not enough — it wants the full set of headers a real navigation sends.
+BROWSER_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+        "image/avif,image/webp,image/apng,*/*;q=0.8"
+    ),
+    "Accept-Language": "en-US,en;q=0.9,es;q=0.8,pt;q=0.7",
+    "Referer": JOBS_URL,
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Sec-CH-UA": '"Chromium";v="120", "Not(A:Brand";v="24", "Google Chrome";v="120"',
+    "Sec-CH-UA-Mobile": "?0",
+    "Sec-CH-UA-Platform": '"Windows"',
+    "Connection": "keep-alive",
+}
+
+# Statuses that mean "the WAF turned us away", not "this page is missing".
+_BLOCKED_STATUSES = (401, 403, 405, 429, 503)
+
+_session = requests.Session()
+_session.headers.update(BROWSER_HEADERS)
+
+# Optional last-resort fetcher (the live Selenium browser). Registered by main.py
+# so a WAF block can be retried through a real browser that already passed the
+# challenge on the listing page.
+_browser_fetcher: Optional[Callable[[str], Optional[str]]] = None
+_browser_fetch_failed = False
+
+
+def set_browser_fetcher(fetcher: Optional[Callable[[str], Optional[str]]]) -> None:
+    """Register a `url -> html` callable used when plain HTTP is blocked."""
+    global _browser_fetcher, _browser_fetch_failed
+    _browser_fetcher = fetcher
+    _browser_fetch_failed = False
+
+
+def sync_cookies_from_browser(cookies) -> int:
+    """
+    Copy the live browser's Workana cookies into the HTTP session.
+
+    The listing page load already cleared whatever challenge the WAF posed, and
+    those cookies (cf_clearance and friends) are what make plain requests work.
+    Returns how many cookies were adopted.
+    """
+    count = 0
+    for cookie in cookies or []:
+        name = cookie.get("name")
+        value = cookie.get("value")
+        if not name or value is None:
+            continue
+        try:
+            _session.cookies.set(name, value, domain=cookie.get("domain") or ".workana.com")
+            count += 1
+        except Exception:
+            continue
+    return count
 
 PUBLISHED_LABELS = (
     "published projects",
@@ -174,21 +236,46 @@ def fetch_client_project_stats(job_url: str) -> Dict[str, Any]:
     if not job_url:
         return empty
 
-    try:
-        response = requests.get(
-            job_url,
-            headers={"User-Agent": USER_AGENT},
-            timeout=15,
-        )
-        response.encoding = "utf-8"
-        if response.status_code != 200:
-            print(f"⚠️  Could not fetch client stats ({response.status_code}): {job_url}")
-            return empty
-
-        return parse_client_project_stats(response.text)
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️  Error fetching client stats for {job_url}: {e}")
+    html = _fetch_job_html(job_url)
+    if not html:
         return empty
+    return parse_client_project_stats(html)
+
+
+def _fetch_job_html(job_url: str) -> Optional[str]:
+    """
+    Fetch a job detail page, falling back to the real browser when the WAF
+    blocks the plain HTTP request.
+    """
+    global _browser_fetch_failed
+
+    status = None
+    try:
+        response = _session.get(job_url, timeout=15, allow_redirects=True)
+        response.encoding = "utf-8"
+        status = response.status_code
+        if status == 200:
+            return response.text
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error fetching job page for {job_url}: {e}")
+
+    # Not a block (e.g. 404 — the post was taken down): nothing to retry.
+    if status is not None and status not in _BLOCKED_STATUSES:
+        print(f"⚠️  Could not fetch job page ({status}): {job_url}")
+        return None
+
+    if _browser_fetcher is None or _browser_fetch_failed:
+        print(f"⚠️  Could not fetch job page ({status or 'network error'}): {job_url}")
+        return None
+
+    html = _browser_fetcher(job_url)
+    if not html:
+        # One failure is enough to stop paying the browser cost for every job
+        # in this run; the next run re-arms it.
+        _browser_fetch_failed = True
+        print(f"⚠️  Browser fallback also failed ({status}): {job_url}")
+        return None
+    return html
 
 
 def _client_stats_complete(job: Dict) -> bool:
