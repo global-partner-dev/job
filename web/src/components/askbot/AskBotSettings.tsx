@@ -51,10 +51,35 @@ export default function AskBotSettingsDrawer({
 
         <div className="space-y-5 p-5">
           <p className="rounded-md border border-border bg-surface-2/50 px-3 py-2 text-[11px] text-muted">
-            AskBot never sends anything on its own. It writes a short question, opens the project
-            on Workana's <b>Ask a question</b> form with the text already in place, and waits for
-            you to press Send.
+            AskBot writes a proposal ending in one concrete question, opens the project on
+            Workana's message form with the text in place, and — with <b>Send automatically</b>
+            on — presses Send for you.
           </p>
+
+          <section className="space-y-2">
+            <h3 className="stat-label">Sending</h3>
+            <label className="flex cursor-pointer items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary"
+                checked={settings.autoSend}
+                onChange={(e) => set('autoSend', e.target.checked)}
+              />
+              <span className="text-xs text-content">
+                Send automatically
+                <span className="mt-0.5 block text-[11px] text-subtle">
+                  Fills the form and presses Send in a background tab, with no review step. If the
+                  Send button can't be found the tab stays open so you can finish it by hand.
+                </span>
+              </span>
+            </label>
+            {settings.autoSend && (
+              <p className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-[11px] text-warning">
+                ⚠️ Proposals go out unreviewed, one per newly published project, while the toggle
+                is on. Use the queue budget range to control how many.
+              </p>
+            )}
+          </section>
 
           <section className="space-y-3">
             <h3 className="stat-label">OpenAI</h3>
@@ -157,8 +182,10 @@ export default function AskBotSettingsDrawer({
                   onChange={(e) => set('gapDelayMaxSec', num(e.target.value, 1))} />
               </label>
             </div>
-            <div>
-              <label className="text-xs text-muted">Wait for you to press Send</label>
+            <div className={settings.autoSend ? 'opacity-50' : undefined}>
+              <label className="text-xs text-muted">
+                Wait for you to press Send{settings.autoSend ? ' (auto-send is on)' : ''}
+              </label>
               <input
                 className="input mt-1"
                 type="number"

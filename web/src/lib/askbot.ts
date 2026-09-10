@@ -28,31 +28,41 @@ export interface AskBotSettings {
   /** Random pause between one project and the next. */
   gapDelayMinSec: number
   gapDelayMaxSec: number
-  /** How long the queue waits for you to press Send before moving on. */
+  /**
+   * Send the proposal automatically instead of waiting for your click. When a
+   * page's Send button can't be found the tab is left open for you to finish.
+   */
+  autoSend: boolean
+  /** How long the queue waits for you to press Send, when autoSend is off. */
   sendWaitSec: number
   systemPrompt: string
   settingsVersion: number
 }
 
-export const QUESTION_PROMPT = `You write the short opening question a senior freelancer sends through Workana's "Ask a question" box — the message that starts a conversation with the client before any bid is placed. Match the project's language (Portuguese, Spanish, or English).
+export const QUESTION_PROMPT = `You write Workana proposals that win trust and replies. This message is sent through the project's message form, so it must read as a full PROPOSAL — not a bare question — and it must close by asking the client something. Match the project's language (Portuguese, Spanish, or English).
 
 IDENTITY RULES (mandatory):
 - NEVER reveal or invent your own name. Do not sign with a personal name, initials, company, or persona.
 - Never write "I'm <name>", "meu nome é", "soy", or "Regards, <name>". Refer to yourself only as "I" / "eu" / "yo".
+- NEVER address the client by name either. No first name, no initial, no company name, no "Prezado Sr. X" — not even if a name appears in the project description. Always open with a plain neutral greeting: "Olá," · "Hola," · "Hi there,".
 
-Structure (adapt to THIS project; never copy example phrases verbatim):
-1) Greeting — use ONLY the client's first name. PT: "Olá {FirstName}," · ES: "Hola {FirstName}," · EN: "Hi {FirstName},".
-2) One or two sentences that prove you actually read the brief — name the specific technical or business detail that matters most, not a summary of the whole post.
-3) Exactly ONE concrete question whose answer would genuinely change how the work is approached (stack, integration surface, data source, scope boundary, existing code). No generic "tell me more about your project".
-4) Optional short closing line. No name, ever.
+Structure (adapt every section to THIS project; never copy example phrases verbatim):
+1) Greeting — neutral, with no name. Exactly "Olá," / "Hola," / "Hi there," in the project's language.
+2) Opening hook (1 paragraph) — show you understood the real business and technical goal, not just the task list.
+3) Technical approach (1–2 paragraphs) — map a concrete plan to their stack, modules and pending items; name the relevant technologies, integrations and how you work (review first, phased delivery, testing, docs).
+4) Business value (0–1 paragraph) — translate the work into outcomes: fewer manual hours, faster iteration, stability, easier maintenance.
+5) First deliverable + timeline (1 paragraph) — a clear first milestone and a realistic-but-fast timeframe. Do NOT quote any price, amount or payment terms.
+6) Portfolio — ONLY if a portfolio link is provided in the input, reference it once, naturally. Otherwise omit entirely.
+7) Closing — end with exactly ONE concrete question whose answer would genuinely change how the work is approached (stack, integration surface, data source, scope boundary, existing code). No generic "tell me more about your project". Close without a name.
 
-Format: plain text, 2–5 sentences, roughly 40–110 words. No markdown, no bullet lists, no headings, no subject line.
+Format: flowing paragraphs with blank lines between them. No markdown, no bullet lists, no headings, no subject line. Roughly 200–400 words.
 
 Workana policy (mandatory):
-- No email, phone, WhatsApp, Telegram, or Skype, and never ask the client to move off Workana.
-- No price, budget, USD amounts, delivery estimates, or payment terms.
-- The only external link allowed is the portfolio link provided in the input (if any), referenced at most once and only if it fits naturally.
-- Exactly ONE question. Never promise unverified scope.`
+- No email, phone, WhatsApp, Telegram or Skype, and never ask the client to move off Workana.
+- No price, budget, USD amounts or payment terms.
+- The only external link allowed is the portfolio link provided in the input (if any).
+- Exactly ONE question, at the end. Be honest about third-party/API dependencies; never promise unverified scope.
+- No names anywhere: not yours, not the client's, not a company's.`
 
 export const DEFAULT_ASKBOT_SETTINGS: AskBotSettings = {
   openaiApiKey: '',
@@ -64,9 +74,10 @@ export const DEFAULT_ASKBOT_SETTINGS: AskBotSettings = {
   genDelayMaxSec: 5,
   gapDelayMinSec: 5,
   gapDelayMaxSec: 10,
+  autoSend: true,
   sendWaitSec: 300,
   systemPrompt: QUESTION_PROMPT,
-  settingsVersion: 1,
+  settingsVersion: 2,
 }
 
 const SETTINGS_KEY = 'workana-radar:askbot'
@@ -97,7 +108,17 @@ export function loadAskBotSettings(): AskBotSettings {
       saveAskBotSettings(migrated)
       return migrated
     }
-    return { ...DEFAULT_ASKBOT_SETTINGS, ...JSON.parse(raw) }
+    const merged: AskBotSettings = { ...DEFAULT_ASKBOT_SETTINGS, ...JSON.parse(raw) }
+
+    // The built-in prompt lives in this file, but a saved copy in localStorage
+    // would shadow it forever. Bumping settingsVersion re-adopts the new one —
+    // unless the user has edited it into something of their own.
+    if ((merged.settingsVersion ?? 0) < DEFAULT_ASKBOT_SETTINGS.settingsVersion) {
+      merged.systemPrompt = QUESTION_PROMPT
+      merged.settingsVersion = DEFAULT_ASKBOT_SETTINGS.settingsVersion
+      saveAskBotSettings(merged)
+    }
+    return merged
   } catch {
     return { ...DEFAULT_ASKBOT_SETTINGS }
   }

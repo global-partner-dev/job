@@ -1,10 +1,10 @@
 /**
  * Runs on Workana's project message pages.
  *
- * On WR_FILL_QUESTION it switches to the "Ask a question" tab and pre-fills the
- * message box — it never clicks Send. When you do press Send it reports the
- * submit back to the worker, which is what removes the project from the
- * dashboard queue.
+ * On WR_FILL_QUESTION it switches to the "Ask a question" tab and fills the
+ * message box, then presses Send itself when `autoSend` is set. Either way the
+ * real submit is reported back to the worker, which is what removes the project
+ * from the dashboard queue.
  */
 (function () {
   const LOG = '[Workana Radar AskBot]';
@@ -131,7 +131,50 @@
     );
   }
 
-  async function fillQuestion(question) {
+  /** The form's own submit control. */
+  function findSendButton(form) {
+    if (!form) return null;
+    const candidates = [
+      ...form.querySelectorAll('button, input[type="submit"], a.btn, [role="button"]'),
+    ];
+    const submit = candidates.find(
+      (b) => (b.type === 'submit' || b.tagName === 'BUTTON') && !b.disabled && visible(b),
+    );
+    if (submit) return submit;
+    return (
+      candidates.find((b) => {
+        const label = (b.textContent || b.value || '').trim();
+        return /^(send|enviar|submit|ask|preguntar|perguntar)\b/i.test(label) && visible(b);
+      }) || null
+    );
+  }
+
+  /**
+   * Submit the question the way the page would. Prefers clicking the real send
+   * button so Workana's own validation and AJAX handler run; falls back to
+   * requestSubmit() when the button can't be found.
+   */
+  async function submitQuestion(field) {
+    const form = questionFormOf(field);
+    const button = findSendButton(form);
+    if (button) {
+      button.scrollIntoView({ block: 'center' });
+      await sleep(200);
+      button.click();
+      return true;
+    }
+    if (form && typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
+      return true;
+    }
+    if (form) {
+      form.submit();
+      return true;
+    }
+    return false;
+  }
+
+  async function fillQuestion(question, autoSend) {
     await activateQuestionTab();
 
     let field = null;
@@ -139,22 +182,30 @@
       field = findQuestionField();
       if (!field) await sleep(500);
     }
-    if (!field) return false;
+    if (!field) return { ok: false, sent: false };
 
     setNativeValue(field, question);
     field.scrollIntoView({ behavior: 'smooth', block: 'center' });
     field.focus();
     watchForSend(field);
-    return true;
+
+    if (!autoSend) return { ok: true, sent: false };
+
+    // Let the page register the input (validation, enabling the send button)
+    // before submitting.
+    await sleep(900);
+    const sent = await submitQuestion(field);
+    if (sent) reportSent();
+    return { ok: true, sent };
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type !== 'WR_FILL_QUESTION') return false;
     filledSlug = msg.slug || slugFromPath();
     reported = false;
-    fillQuestion(msg.question || '').then(
-      (ok) => sendResponse({ ok }),
-      () => sendResponse({ ok: false }),
+    fillQuestion(msg.question || '', !!msg.autoSend).then(
+      (res) => sendResponse(res),
+      () => sendResponse({ ok: false, sent: false }),
     );
     return true; // async response
   });

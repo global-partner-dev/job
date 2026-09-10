@@ -1,26 +1,37 @@
-/** First given name from a Workana display name, e.g. "Roberto B. A." -> "Roberto". */
-export function clientFirstName(displayName) {
-  const trimmed = (displayName || '').trim();
-  if (!trimmed || /^unknown$/i.test(trimmed)) return 'Unknown';
-  const match = trimmed.match(/^([\p{L}][\p{L}'’-]*)/u);
-  const first = match ? match[1] : trimmed.split(/\s+/)[0];
-  return first.replace(/[,;:.]+$/g, '') || 'Unknown';
-}
+// Greeting openers across the three languages Workana posts in. Note the
+// lookahead instead of \b: word boundaries don't fire after an accented letter
+// like the "á" in "Olá", so \b would silently skip half the Portuguese cases.
+const GREETING_OPENERS =
+  '(?:olá|ola|oi|hola|buenos días|buenos dias|buenas tardes|buenas|bom dia|boa tarde|boa noite|hi|hello|hey|dear|prezad[oa]|estimad[oa]|car[oa])';
+const GREETING_RE = new RegExp(
+  `^([ \t]*${GREETING_OPENERS})((?:[ \t]+[^\n,:!]*)?)([,:!]?)`,
+  'i',
+);
 
-/** Replace the full Workana display name if the model still used it. */
-export function enforceClientFirstName(text, displayName, firstName) {
-  if (!text || !firstName || firstName === 'Unknown') return text;
-  let out = text;
-  const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Words that follow a greeting without being anyone's name.
+const NEUTRAL_TRAILER_RE =
+  /^(there|all|everyone|team|folks|sir|madam|pessoal|equipe|time|todos|a todos|equipo|gente)$/i;
 
-  if (displayName && displayName !== firstName) {
-    out = out.replace(new RegExp(esc(displayName), 'gi'), firstName);
-    const parts = displayName.trim().split(/\s+/).map(esc);
-    if (parts.length > 1) {
-      out = out.replace(new RegExp(parts.join('\\s+'), 'gi'), firstName);
-    }
-  }
-  return out;
+/**
+ * Remove the client's name from the greeting.
+ *
+ * The model is never given the client's name, but a brief often contains it
+ * ("Olá, sou a Leticia e preciso...") and the model can pick it up from there.
+ * This normalizes "Hola Leticia," back to "Hola," while leaving genuinely
+ * name-free openers ("Hi there,") and the whole body untouched.
+ */
+export function stripNameFromGreeting(text) {
+  if (!text) return text;
+  const newlineAt = text.indexOf('\n');
+  const firstLine = newlineAt === -1 ? text : text.slice(0, newlineAt);
+  const rest = newlineAt === -1 ? '' : text.slice(newlineAt);
+
+  const cleaned = firstLine.replace(GREETING_RE, (match, opener, trailing, punct) => {
+    const name = (trailing || '').trim();
+    if (!name || NEUTRAL_TRAILER_RE.test(name)) return match;
+    return `${opener}${punct || ','}`;
+  });
+  return cleaned + rest;
 }
 
 /** Normalize whitespace while keeping paragraph breaks. */
@@ -41,10 +52,10 @@ export function normalizeMessageText(text) {
 export async function generateQuestion({ apiKey, model, systemPrompt, portfolioUrl, project }) {
   if (!apiKey) throw new Error('No OpenAI API key set — add one in AskBot settings.');
 
-  const displayName = (project.clientName || '').trim();
-  const firstName = clientFirstName(displayName);
   const userContent = [
-    `Client first name (the ONLY name you may use for the client): ${firstName}`,
+    'The client is deliberately anonymous: you are NOT given their name, and you must ' +
+      'not use one. Open with a neutral greeting and never address them by name, ' +
+      'initial, or company — even if a name appears in the description below.',
     `Project title: ${project.title}`,
     `Budget: ${project.budget}`,
     `Country: ${project.country}`,
@@ -88,5 +99,5 @@ export async function generateQuestion({ apiKey, model, systemPrompt, portfolioU
   const data = await res.json();
   const raw = normalizeMessageText(data.choices?.[0]?.message?.content?.trim());
   if (!raw) throw new Error('Empty response from OpenAI');
-  return enforceClientFirstName(raw, displayName, firstName);
+  return stripNameFromGreeting(raw);
 }

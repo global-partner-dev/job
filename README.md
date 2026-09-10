@@ -6,9 +6,9 @@ A three-part system for monitoring freelance opportunities on [Workana](https://
    them with client stats, and stores everything in **Supabase** (Postgres).
 2. **React dashboard** (`web/`) — a live monitoring UI deployed on **Vercel** that reads
    from Supabase in real time, with dropdown filters and the auto-ask toggle.
-3. **AskBot extension** (`extension/`) — a Chrome extension that writes a short
-   clarifying question for each new project and opens Workana's **"Ask a question"**
-   form pre-filled. **You** press Send; nothing is ever submitted automatically.
+3. **AskBot extension** (`extension/`) — a Chrome extension that writes a proposal for
+   each newly published project (closing with one concrete question), fills Workana's
+   message form, and sends it. Turn **Send automatically** off to review each one first.
 
 ```
 Workana ──► Python scraper (VPS) ──► Supabase (Postgres) ──► React dashboard (Vercel)
@@ -17,8 +17,8 @@ Workana ──► Python scraper (VPS) ──► Supabase (Postgres) ──► R
                                                                        │ auto-ask toggle
                                                                        ▼
                                                           AskBot extension (Chrome)
-                                                          writes question → opens
-                                                          Workana pre-filled → you Send
+                                                          writes proposal → fills
+                                                          Workana form → sends
 ```
 
 > **No translation, no summarizing.** Project details are stored exactly as posted
@@ -200,12 +200,16 @@ Flip **Auto-ask** on and the dashboard starts a queue at that moment:
 
 1. The queue is every project **published after the toggle went on** that you have not sent
    a question about — newest first. Nothing older is ever touched.
-2. The dashboard hands the newest one to the extension, which writes a short clarifying
-   question (2–5 sentences, no price, exactly one question) with OpenAI.
-3. The extension opens the project on Workana's **"Ask a question"** tab with the text
-   already filled in, and stops there.
-4. You read it and press **Send**. The extension notices the real submit, marks the project
-   `sent`, and it **drops off the list**. Closing the tab instead skips to the next project.
+2. The dashboard hands the newest one to the extension, which writes a **proposal** with
+   OpenAI (~200–400 words: hook, technical approach, business value, first milestone) that
+   closes with exactly one concrete question. No price, and **no names** — neither yours
+   nor the client's. The model is never even given the client's name, and the greeting is
+   scrubbed afterwards in case one leaked in from the brief.
+3. The extension opens the project on Workana's message tab with the text filled in and,
+   with **Send automatically** on (the default), presses Send in a background tab.
+4. The project is marked `sent` and **drops off the list**. If the Send button can't be
+   found, the tab is left open so you can finish it by hand rather than losing the project.
+   Turn **Send automatically** off to review every proposal before it goes out.
 
 Flip it off and the feed goes back to showing the whole archive.
 
@@ -214,7 +218,8 @@ Flip it off and the feed goes back to showing the whole archive.
 | Queue budget range   | min/max on top of the archive's $101 floor; empty side = no bound |
 | Before opening       | random pause after the question is written, before the tab opens |
 | Between projects     | random pause between one project and the next                    |
-| Wait to press Send   | how long the queue waits for you before moving on                |
+| Send automatically   | press Send for you (on by default) instead of waiting for a click |
+| Wait to press Send   | how long the queue waits for you, when auto-send is off           |
 | Question prompt      | the system prompt used to write the question                     |
 
 ---

@@ -93,12 +93,15 @@ function waitForSend(slug, tabId, timeoutMs) {
 }
 
 /**
- * Open the Workana project page on its "Ask a question" tab and pre-fill the
- * message. Never submits — that click stays yours.
- * @returns {Promise<{tabId:number|null, filled:boolean}>}
+ * Open the Workana project page on its "Ask a question" tab, pre-fill the
+ * message, and (when autoSend is on) press Send for you.
+ * @returns {Promise<{tabId:number|null, filled:boolean, sent:boolean}>}
  */
-async function openAndFill(slug, question) {
-  const tab = await chrome.tabs.create({ url: askQuestionPageUrl(slug), active: true });
+async function openAndFill(slug, question, autoSend) {
+  const tab = await chrome.tabs.create({
+    url: askQuestionPageUrl(slug),
+    active: !autoSend, // auto-send runs in the background, out of your way
+  });
   await waitForComplete(tab.id);
 
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -107,14 +110,25 @@ async function openAndFill(slug, question) {
         type: 'WR_FILL_QUESTION',
         slug,
         question,
+        autoSend,
       });
-      if (resp?.ok) return { tabId: tab.id, filled: true };
+      if (resp?.ok) return { tabId: tab.id, filled: true, sent: !!resp.sent };
     } catch {
       /* content script not ready yet */
     }
     await sleep(700);
   }
-  return { tabId: tab.id, filled: false };
+  return { tabId: tab.id, filled: false, sent: false };
+}
+
+/** Close a tab we opened for an auto-send, ignoring an already-closed one. */
+async function closeTab(tabId) {
+  if (tabId == null) return;
+  try {
+    await chrome.tabs.remove(tabId);
+  } catch {
+    /* already gone */
+  }
 }
 
 /**
@@ -144,16 +158,16 @@ export async function runAskQueue(payload, { emit, isStopped }) {
       await ensureAsk(auth, slug);
       await updateAsk(auth, slug, { status: 'preparing' });
 
-      // Top up thin rows from the detail page before writing.
+      // Top up a thin row from the detail page before writing. Proposals are
+      // written without the client's name, so only the brief itself matters here.
       let project = job;
-      if (!project.description || project.description.length < 40 || !project.clientName) {
+      if (!project.description || project.description.length < 40) {
         try {
           const details = await fetchProjectDetails(slug);
           project = {
             ...job,
             ...details,
             country: details.country || job.country,
-            clientName: details.clientName || job.clientName,
           };
         } catch {
           /* fall back to what the web app sent */
@@ -174,35 +188,60 @@ export async function runAskQueue(payload, { emit, isStopped }) {
       await keepAliveSleep(randMs(settings.genDelayMinSec, settings.genDelayMaxSec), isStopped);
       if (isStopped()) break;
 
-      emitP('opening', { message: 'Opening Workana…' });
-      const { tabId, filled } = await openAndFill(slug, question);
+      const autoSend = settings.autoSend !== false;
+      emitP('opening', { message: autoSend ? 'Sending on Workana…' : 'Opening Workana…' });
+      const { tabId, filled, sent: submittedNow } = await openAndFill(slug, question, autoSend);
 
       await updateAsk(auth, slug, { status: 'prepared', question });
-      prepared++;
-      emitP('prepared', {
-        question,
-        message: filled
-          ? 'Pre-filled — review it and press Send on Workana'
-          : 'Opened — paste the question and press Send',
-      });
 
-      // The project stays in the dashboard queue until the form is really sent.
-      const outcome = await waitForSend(slug, tabId, sendWaitMs);
-      if (outcome === 'sent') {
-        prepared--;
+      const markSent = async (message) => {
         sent++;
         await markSlugAsked(slug);
         await updateAsk(auth, slug, { status: 'sent', question, error: null });
-        emitP('sent', { question, message: 'Question sent' });
+        emitP('sent', { question, message });
         await appendLog({ type: 'ask', slug, title: job.title });
-      } else {
+      };
+
+      if (autoSend && submittedNow) {
+        // The content script pressed Send and confirmed the submit.
+        await sleep(1500); // let the request leave before the tab closes
+        await closeTab(tabId);
+        await markSent('Proposal sent automatically');
+      } else if (autoSend && filled) {
+        // Filled but the send button never appeared — leave the tab open so it
+        // can be finished by hand rather than silently dropping the project.
+        prepared++;
         emitP('prepared', {
           question,
-          message:
-            outcome === 'closed'
-              ? 'Tab closed before sending — still in the queue'
-              : 'Not sent yet — still in the queue',
+          message: 'Filled, but Send could not be pressed — finish it on Workana',
         });
+        const outcome = await waitForSend(slug, tabId, sendWaitMs);
+        if (outcome === 'sent') {
+          prepared--;
+          await markSent('Question sent');
+        }
+      } else {
+        prepared++;
+        emitP('prepared', {
+          question,
+          message: filled
+            ? 'Pre-filled — review it and press Send on Workana'
+            : 'Opened — paste the question and press Send',
+        });
+        // The project stays in the dashboard queue until the form is really sent.
+        const outcome = await waitForSend(slug, tabId, sendWaitMs);
+        if (outcome === 'sent') {
+          prepared--;
+          await markSent('Question sent');
+        } else {
+          emitP('prepared', {
+            question,
+            message:
+              outcome === 'closed'
+                ? 'Tab closed before sending — still in the queue'
+                : 'Not sent yet — still in the queue',
+          });
+        }
       }
     } catch (err) {
       failed++;

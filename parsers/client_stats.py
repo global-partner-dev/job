@@ -179,6 +179,31 @@ def extract_full_project_title(soup: BeautifulSoup) -> Optional[str]:
     return None
 
 
+def is_abbreviated_name(name: Optional[str]) -> bool:
+    """
+    True when a display name gives no usable first name.
+
+    Workana's LISTING abbreviates most clients to initials ("L. R.", "E. N. C.")
+    while the project page carries the real name ("Leticia R."). A leading token
+    of one letter is an initial, so greeting the client by it produces "Hi L,".
+    """
+    first = (name or "").strip().split()
+    if not first:
+        return True
+    return len(first[0].strip(".,;:")) < 2
+
+
+def extract_client_name(soup: BeautifulSoup) -> Optional[str]:
+    """Client display name from the project page sidebar (the unabbreviated one)."""
+    for selector in ("aside .h4.user-name span", ".h4.user-name span", ".user-name span", ".user-name"):
+        elem = soup.select_one(selector)
+        if elem:
+            name = _clean_text(elem.get_text(" ", strip=True))
+            if name:
+                return name
+    return None
+
+
 def parse_client_project_stats(html: str) -> Dict[str, Any]:
     stats: Dict[str, Any] = {
         "client_published_projects": None,
@@ -187,6 +212,7 @@ def parse_client_project_stats(html: str) -> Dict[str, Any]:
         "client_joined_year": None,
         "title": None,
         "description": None,
+        "client_name": None,
     }
 
     if not html:
@@ -195,6 +221,7 @@ def parse_client_project_stats(html: str) -> Dict[str, Any]:
     soup = BeautifulSoup(html, "lxml")
     stats["title"] = extract_full_project_title(soup)
     stats["description"] = extract_full_project_description(soup)
+    stats["client_name"] = extract_client_name(soup)
 
     for item in soup.select("div.item-data"):
         value_elem = item.select_one("p.h4")
@@ -326,6 +353,13 @@ def enrich_job_with_client_stats(job: Dict, delay: bool = True) -> Dict:
         return job
 
     stats = fetch_client_project_stats(url)
+
+    # The project page name replaces the listing's initials, but never the other
+    # way round — if the page came back abbreviated, keep what we already had.
+    detail_name = stats.pop("client_name", None)
+    if detail_name and is_abbreviated_name(job.get("client_name")) and not is_abbreviated_name(detail_name):
+        job["client_name"] = detail_name
+
     job.update({k: v for k, v in stats.items() if v is not None})
 
     if delay and DELAY_BETWEEN_REQUESTS:
