@@ -34,12 +34,18 @@ export function stripNameFromGreeting(text) {
   return cleaned + rest;
 }
 
-/** Normalize whitespace while keeping paragraph breaks. */
+/**
+ * Normalize whitespace to the house format: one line break between blocks,
+ * never a blank line.
+ *
+ * Models reach for blank-line paragraph spacing no matter how firmly the prompt
+ * says otherwise, so the rule is enforced here rather than hoped for.
+ */
 export function normalizeMessageText(text) {
   return (text || '')
     .replace(/\r\n/g, '\n')
     .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\n\s*\n+/g, '\n')
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
 }
@@ -83,7 +89,11 @@ export async function generateQuestion({ apiKey, model, systemPrompt, portfolioU
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userContent },
         ],
-        temperature: 0.7,
+        // Higher temperature + presence_penalty push it off the one phrasing it
+        // would otherwise settle into for every project.
+        temperature: 0.9,
+        presence_penalty: 0.4,
+        frequency_penalty: 0.3,
         max_tokens: 600,
       }),
     });
