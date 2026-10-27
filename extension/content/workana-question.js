@@ -3,11 +3,10 @@
  *
  * On WR_FILL_QUESTION it switches to the "Ask a question" tab and fills the
  * message box, then presses Send itself when `autoSend` is set. Either way the
- * real submit is reported back to the worker, which is what removes the project
- * from the dashboard queue.
+ * real submit is reported back to the worker, which then sets `bidded = 1`.
  */
 (function () {
-  const LOG = '[Workana Radar AskBot]';
+  const LOG = '[Workana Radar Bid Bot]';
   const QUESTION_TAB_RE = /(ask a question|make a question|question|pergunta|dúvida|duvida|pregunta|duda|consulta)/i;
   const BID_TAB_RE = /(make (a )?bid|place (a )?bid|proposta|propuesta|ofertar|hacer una oferta)/i;
 

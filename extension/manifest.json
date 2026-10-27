@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Workana Radar AskBot",
-  "version": "3.0.0",
-  "description": "Writes an OpenAI clarifying question for the newest Workana projects and opens each one pre-filled on Workana's \"Ask a question\" form — you press Send.",
-  "permissions": ["storage", "cookies", "tabs"],
+  "name": "Workana Radar Bid Bot",
+  "version": "4.0.0",
+  "description": "Takes projects one by one from your Supabase database, writes a proposal with OpenAI, sends it on Workana, and marks the project bidded. Lives in a side panel on the right third of the page.",
+  "permissions": ["storage", "cookies", "tabs", "scripting"],
   "host_permissions": [
     "https://www.workana.com/*",
     "https://api.openai.com/*",
@@ -14,17 +14,12 @@
     "type": "module"
   },
   "action": {
-    "default_popup": "popup/popup.html",
-    "default_title": "Workana Radar AskBot"
+    "default_title": "Workana Radar Bid Bot"
   },
   "content_scripts": [
     {
-      "matches": [
-        "http://localhost:*/*",
-        "http://127.0.0.1:*/*",
-        "https://job-six-nu.vercel.app/*"
-      ],
-      "js": ["content/bridge.js"],
+      "matches": ["https://www.workana.com/*"],
+      "js": ["content/panel.js"],
       "run_at": "document_idle"
     },
     {
@@ -38,6 +33,12 @@
       ],
       "js": ["content/workana-question.js"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["panel/panel.html"],
+      "matches": ["https://www.workana.com/*"]
     }
   ],
   "icons": {

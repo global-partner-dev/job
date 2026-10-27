@@ -6,7 +6,11 @@ Archive filters — only projects that pass ALL of these are stored:
   2. Price: exclude fixed-price projects under $101.
   3. Client payment ability: exclude clients who posted 2+ projects but have
      paid for none (published >= 2 and paid == 0).
+  4. Template projects: exclude WhatsApp chatbot / WhatsApp automation posts.
+     These are boilerplate listings (e.g. "Seeking an expert in automated
+     WhatsApp messaging responses") that people publish only to collect bids.
 """
+import re
 from typing import Dict, Optional, Tuple
 
 MIN_BUDGET_USD = 101  # exclude fixed-price projects under this
@@ -30,6 +34,25 @@ ALLOWED_COUNTRIES = {
     # --- Europe (ONLY these two) ---
     "spain", "españa", "portugal",
 }
+
+
+# WhatsApp mention (incl. "whats app", "whats-app" and the Brazilian "wpp").
+_WHATSAPP_RE = re.compile(r"whats[\s\-]?app|\bwpp\b", re.IGNORECASE)
+
+# Automation / bot vocabulary in English, Spanish and Portuguese.
+_AUTOMATION_RE = re.compile(
+    r"\bbots?\b|chat[\s\-]?bots?|\bautoma[tçc]|\bautoresp|auto[\s\-]?respon|"
+    r"\bauto[\s\-]?repl|\bautoatend|respuestas?\s+autom|respostas?\s+autom|"
+    r"mensajes?\s+autom|mensagens?\s+autom|messag\w*\s+response|"
+    r"\bmass\s+messag|mensajes?\s+masiv|mensagens?\s+em\s+massa|envio\s+em\s+massa|"
+    r"\bapi\b.*\bwhats|\bwhats\w*\b.*\bapi\b",
+    re.IGNORECASE,
+)
+
+# How much of the description counts as "the project is about WhatsApp". A long
+# brief that mentions WhatsApp in passing (e.g. a CRM with WhatsApp
+# notifications) is a real project; a template opens with it.
+_TEMPLATE_LEAD_CHARS = 250
 
 
 def _norm(value: Optional[str]) -> str:
@@ -65,12 +88,34 @@ def passes_payment_ability(job: Dict, min_published: int = NONPAYER_MIN_PUBLISHE
     return not (paid == 0 and published >= min_published)
 
 
+def is_template_project(job: Dict) -> bool:
+    """
+    True for WhatsApp chatbot / WhatsApp automation template posts.
+
+    WhatsApp has to be the subject — in the title or the opening of the brief —
+    and the post has to be about bots or automation anywhere in title + brief.
+    """
+    title = job.get("title") or ""
+    description = job.get("description") or ""
+    lead = f"{title}\n{description[:_TEMPLATE_LEAD_CHARS]}"
+    if not _WHATSAPP_RE.search(lead):
+        return False
+    return bool(_AUTOMATION_RE.search(f"{title}\n{description}"))
+
+
+def passes_not_template(job: Dict) -> bool:
+    """Exclude WhatsApp chatbot / automation template projects."""
+    return not is_template_project(job)
+
+
 def passes_listing_filters(job: Dict) -> Tuple[bool, str]:
     """Cheap filters from the listing (no detail-page fetch needed)."""
     if not passes_country(job):
         return False, f"country not allowed: {job.get('client_country') or 'unknown'}"
     if not passes_price(job):
         return False, f"budget under ${MIN_BUDGET_USD}: {job.get('budget') or 'n/a'}"
+    if not passes_not_template(job):
+        return False, "template project (WhatsApp chatbot / automation)"
     return True, ""
 
 
@@ -81,4 +126,7 @@ def passes_client_filters(job: Dict) -> Tuple[bool, str]:
             False,
             f"non-payer: {job.get('client_published_projects')} published, 0 paid",
         )
+    # The listing only carries a ~350-char preview; the full brief is known now.
+    if not passes_not_template(job):
+        return False, "template project (WhatsApp chatbot / automation)"
     return True, ""

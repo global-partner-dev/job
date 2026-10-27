@@ -50,7 +50,7 @@ def run_scrape(db, scraper, classifier):
 
         print(f"Scraped {len(scraped_jobs)} jobs total")
 
-        # Stage 1 — cheap listing filters (country + price), no fetch needed.
+        # Stage 1 — cheap listing filters (country + price + template), no fetch needed.
         stage1 = []
         skipped_listing = 0
         for job in scraped_jobs:
@@ -61,7 +61,7 @@ def run_scrape(db, scraper, classifier):
                 stage1.append(job)
             else:
                 skipped_listing += 1
-        print(f"Passed country/price: {len(stage1)} | filtered out: {skipped_listing}")
+        print(f"Passed country/price/template: {len(stage1)} | filtered out: {skipped_listing}")
 
         new_candidates = [j for j in stage1 if db.job_is_new(j['id'])]
         existing_jobs = [j for j in stage1 if not db.job_is_new(j['id'])]
@@ -87,7 +87,7 @@ def run_scrape(db, scraper, classifier):
                     "the payment-ability filter cannot judge those and keeps them."
                 )
 
-        # Stage 2 — client payment-ability filter (needs the enriched stats).
+        # Stage 2 — client payment-ability + template filters (need the enriched stats / full brief).
         new_to_store = []
         skipped_nonpayer = 0
         for job in new_candidates:
@@ -96,7 +96,7 @@ def run_scrape(db, scraper, classifier):
                 new_to_store.append(job)
             else:
                 skipped_nonpayer += 1
-        print(f"Passed client filter: {len(new_to_store)} | non-payers skipped: {skipped_nonpayer}")
+        print(f"Passed client filter: {len(new_to_store)} | non-payers/templates skipped: {skipped_nonpayer}")
 
         # Stage 3 — AI category filter: keep only the target project types
         # (SaaS, corporate/service sites excl. WordPress, custom CRM/ERP,

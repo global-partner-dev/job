@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Workana Radar Bid Bot</title>
+  <link rel="stylesheet" href="panel.css" />
+</head>
+<body>
+  <header>
+    <h1>Workana Radar Bid Bot</h1>
+    <button id="close" class="icon" type="button" title="Close panel" aria-label="Close panel">&times;</button>
+  </header>
+
+  <main>
+    <section class="run">
+      <div class="buttons">
+        <button id="start" class="primary" type="button">Start bidding</button>
+        <button id="stop" type="button" disabled>Stop</button>
+      </div>
+      <div id="status" class="status" data-phase="idle">Ready.</div>
+      <div class="counts">
+        <span>Sent <b id="sent">0</b></span>
+        <span>Failed <b id="failed">0</b></span>
+      </div>
+      <div id="current" class="current" hidden>
+        <span class="label">Current project</span>
+        <a id="current-link" href="#" target="_blank" rel="noopener"></a>
+      </div>
+    </section>
+
+    <section>
+      <h2>Keys</h2>
+      <label>OpenAI API key
+        <input id="openaiApiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" />
+      </label>
+      <label>Supabase URL
+        <input id="supabaseUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://xxxx.supabase.co" />
+      </label>
+      <label>Supabase publishable key
+        <input id="supabaseKey" type="password" autocomplete="off" spellcheck="false" placeholder="sb_publishable_…" />
+      </label>
+      <p class="hint">Stored only in this browser profile.</p>
+    </section>
+
+    <section>
+      <h2>Prompt</h2>
+      <textarea id="prompt" rows="14" spellcheck="false"></textarea>
+      <div class="row">
+        <span id="prompt-note" class="hint">Built-in prompt.</span>
+        <button id="reset-prompt" type="button">Reset to built-in</button>
+      </div>
+    </section>
+
+    <details>
+      <summary>More settings</summary>
+      <label>Model
+        <input id="model" type="text" autocomplete="off" spellcheck="false" />
+      </label>
+      <label>Portfolio link (optional)
+        <input id="portfolioUrl" type="url" autocomplete="off" spellcheck="false" placeholder="https://…" />
+      </label>
+      <div class="pair">
+        <label>Before opening, min s<input id="genDelayMinSec" type="number" min="1" /></label>
+        <label>max s<input id="genDelayMaxSec" type="number" min="1" /></label>
+      </div>
+      <div class="pair">
+        <label>Between projects, min s<input id="gapDelayMinSec" type="number" min="1" /></label>
+        <label>max s<input id="gapDelayMaxSec" type="number" min="1" /></label>
+      </div>
+      <label class="check">
+        <input id="autoSend" type="checkbox" /> Send automatically
+      </label>
+      <label>Wait for your Send click (s), when auto-send is off
+        <input id="sendWaitSec" type="number" min="30" />
+      </label>
+    </details>
+
+    <section>
+      <h2>Activity</h2>
+      <ul id="log" class="log"></ul>
+    </section>
+  </main>
+
+  <script type="module" src="panel.js"></script>
+</body>
+</html>

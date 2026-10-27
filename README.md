@@ -1,54 +1,41 @@
-# Workana Radar — Job Scraper + Live Dashboard + AskBot
+# Workana Radar — Job Scraper + Bid Bot
 
-A three-part system for monitoring freelance opportunities on [Workana](https://www.workana.com):
+Two parts around one **Supabase** (Postgres) database:
 
-1. **Python scraper** (`/`) — runs on your VPS, scrapes IT/programming jobs, enriches
-   them with client stats, and stores everything in **Supabase** (Postgres).
-2. **React dashboard** (`web/`) — a live monitoring UI deployed on **Vercel** that reads
-   from Supabase in real time, with dropdown filters and the auto-ask toggle.
-3. **AskBot extension** (`extension/`) — a Chrome extension that writes a proposal for
-   each newly published project (closing with one concrete question), fills Workana's
-   message form, and sends it. Turn **Send automatically** off to review each one first.
+1. **Python scraper** (`/`) — runs on your VPS, scrapes IT/programming jobs from
+   [Workana](https://www.workana.com), filters them, and stores only the relevant ones.
+2. **Chrome extension** (`extension/`) — a side panel on the right third of the browser
+   window. It takes projects from the database one by one, writes a proposal with OpenAI,
+   sends it on Workana, and sets the project's `bidded` field to `1`.
 
 ```
-Workana ──► Python scraper (VPS) ──► Supabase (Postgres) ──► React dashboard (Vercel)
-             Selenium + requests        service_role key         anon key (RLS)
-             + AI category filter        realtime enabled         live updates
-                                                                       │ auto-ask toggle
-                                                                       ▼
-                                                          AskBot extension (Chrome)
-                                                          writes proposal → fills
-                                                          Workana form → sends
+Workana ──► Python scraper (VPS) ──► Supabase (Postgres) ◄── Chrome extension (side panel)
+             Selenium + requests      jobs.bidded = 0|1       OpenAI proposal → Workana form
+             filters + AI triage      secret key (scraper)    publishable key (extension)
 ```
 
 > **No translation, no summarizing.** Project details are stored exactly as posted
-> (PT / ES / EN). The scraper's only AI step is the **category filter** — a yes/no triage
-> call that decides whether a project is worth keeping. Set `AI_CATEGORY_FILTER=0` and the
-> scraper makes zero OpenAI calls.
->
-> **No place-bid.** The old automated bidding flow was removed; AskBot only ever pre-fills
-> Workana's question form.
+> (PT / ES / EN). The scraper's only AI step is the optional **category filter** — a yes/no
+> triage call. Set `AI_CATEGORY_FILTER=0` and the scraper makes zero OpenAI calls.
 
 ---
 
-## 1. Supabase setup (do this first)
+## 1. Supabase setup
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Open **SQL Editor → New query** and run these files **in order**:
-   1. [`web/supabase/schema.sql`](web/supabase/schema.sql) — `jobs` + `scrape_history`,
-      indexes, RLS, realtime on `jobs`.
-   2. [`web/supabase/02_auth_multiuser.sql`](web/supabase/02_auth_multiuser.sql) —
-      profiles, approval, and the per-user `bids` table.
-   3. [`web/supabase/03_cleanup.sql`](web/supabase/03_cleanup.sql) — daily pg_cron sweep.
-   4. [`web/supabase/04_ask_questions.sql`](web/supabase/04_ask_questions.sql) —
-      migrates the `bids` table from the old place-bid flow to the ask-a-question flow.
-   5. [`web/supabase/05_drop_ai_summary.sql`](web/supabase/05_drop_ai_summary.sql) —
-      retires the `ai_summary` column.
-      Each file is idempotent, so re-running is safe.
-3. From **Settings → API**, grab:
-   - **Project URL** — used by both the scraper and the web app.
-   - **`service_role` key** — for the **scraper only** (bypasses RLS; keep it secret).
-   - **`anon` public key** — for the **web app** (read-only via RLS; safe to expose).
+2. Open **SQL Editor → New query** and run the files in [`supabase/`](supabase/) **in order**:
+   `schema.sql`, `02_auth_multiuser.sql`, `03_cleanup.sql`, `04_ask_questions.sql`,
+   `05_drop_ai_summary.sql`, and **`06_bidded.sql`**. Each file is idempotent.
+   `06_bidded.sql` adds `jobs.bidded` (`0` = not bid on yet, `1` = bid sent) and the two
+   functions the extension calls. The extension's publishable key gets **no table access** —
+   only `next_unbidded_job()` and `mark_job_bidded()`.
+3. From **Settings → API Keys**, grab:
+   - **Project URL** — scraper and extension.
+   - **Secret key** (legacy: `service_role`) — **scraper only**, in `.env`. Bypasses RLS.
+   - **Publishable key** (legacy: `anon`) — typed into the extension's panel.
+
+> The old dashboard tables (`profiles`, `bids`, auth policies) are still in the database and
+> harmless. Nothing reads them any more except `03_cleanup`/`06` keeping rows that have a bid.
 
 ---
 
@@ -75,7 +62,7 @@ pip install -r requirements.txt
 cp .env.template .env
 #   edit .env →
 #     SUPABASE_URL=...              (Project URL)
-#     SUPABASE_SERVICE_KEY=...      (service_role key)
+#     SUPABASE_SERVICE_KEY=...      (secret key)
 #     OPENAI_API_KEY=...            (optional — AI category filter only)
 #     OPENAI_MODEL=gpt-4o-mini
 
@@ -100,7 +87,7 @@ Behavior is controlled in [`config/settings.py`](config/settings.py):
 
 Only **new** jobs (never-before-seen IDs) are enriched with client stats and run through
 the category filter, so re-scraping stays cheap. Every run also records a row in
-`scrape_history` (powering the dashboard's activity chart).
+`scrape_history`.
 
 ### Run it continuously on the VPS
 
@@ -125,7 +112,7 @@ The category filter is the only OpenAI call in the pipeline, and it resolves its
 Set `AI_CATEGORY_FILTER=0` to drop the filter entirely and store everything that passes the
 country / price / payment filters below.
 
-### Archive filters (unchanged)
+### Archive filters
 
 Every stored project must pass all of these — see [`parsers/filters.py`](parsers/filters.py):
 
@@ -134,93 +121,46 @@ Every stored project must pass all of these — see [`parsers/filters.py`](parse
 | Country         | Americas + Spain & Portugal only; unknown country is excluded     |
 | Price           | fixed-price under **$101** excluded (hourly / no-budget kept)     |
 | Payment ability | clients with 2+ published projects and **0 paid** are excluded    |
+| Template posts  | WhatsApp chatbot / WhatsApp automation posts are excluded          |
 | AI category     | only the target project types (`AI_CATEGORY_FILTER=1`)            |
 
 ---
 
-## 3. Web dashboard (`web/`)
-
-Vite + React + TypeScript + Tailwind + `@supabase/supabase-js`. Reads Supabase with the
-**anon** key and subscribes to realtime `jobs` changes.
-
-### Local development
-
-```bash
-cd web
-npm install
-cp .env.example .env
-#   VITE_SUPABASE_URL=...        (Project URL)
-#   VITE_SUPABASE_ANON_KEY=...   (anon public key)
-npm run dev            # http://localhost:5173
-npm run typecheck      # optional: strict TS check
-```
-
-### Deploy to Vercel
-
-1. Push this repo to GitHub.
-2. In Vercel, **New Project → import the repo** and set:
-   - **Root Directory:** `web`
-   - **Framework Preset:** Vite (auto-detected)
-   - **Build Command:** `npm run build` · **Output:** `dist` (defaults are fine)
-3. Add **Environment Variables** (Project → Settings → Environment Variables):
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-4. Deploy. `web/vercel.json` already sets the SPA rewrite so client-side routes resolve.
-
-> The scraper is **not** deployed to Vercel — it stays on your VPS. Vercel only hosts the
-> static dashboard, which talks to Supabase directly from the browser.
-
-### Dashboard features
-
-- **Live feed** — new jobs appear instantly via Supabase realtime (with a "new" pulse).
-- **Dropdown filters** — country, budget **range**, question status, and sort order, all
-  picked from lists. Budget offers preset bands ($101–250, $250–500, $500–1,000, …) plus a
-  **Custom range** with your own min/max; leave a side empty for no bound. Matching is
-  interval *overlap*, so a $500–1,000 project appears under both "$250–500" and
-  "$500–1,000". These narrow what *you* see; the archive filters above still decide what
-  gets stored at all.
-- **Auto-ask toggle** — one switch. See below.
-- **Stats + country breakdown**, **saved jobs** (localStorage), light/dark theme.
-
 ---
 
-## 4. AskBot extension (`extension/`)
+## 3. Chrome extension (`extension/`)
 
 Load it once: **chrome://extensions → Developer mode → Load unpacked → `extension/`**.
-Sign in to Workana in the same Chrome profile. If you deploy the dashboard somewhere other
-than the default, update `PROD_ORIGIN` in `extension/content/bridge.js` **and** the
-matching entry in `extension/manifest.json`.
+Sign in to Workana in the same Chrome profile.
 
-Then open the dashboard, press the gear on the bottom bar, and set your **OpenAI API key**
-(stored in your browser only).
+Click the toolbar icon on any Workana page: the panel opens on the **right third of the
+window** and the page shrinks to fit beside it. Click again (or ×) to close it. On any other
+site the icon opens Workana with the panel showing.
 
-### How the toggle works
+**Fields in the panel**
 
-Flip **Auto-ask** on and the dashboard starts a queue at that moment:
+| Field                     | What it is                                                     |
+| ------------------------- | -------------------------------------------------------------- |
+| OpenAI API key            | used to write each proposal (stored in this browser only)       |
+| Supabase URL / publishable key | where the queue is read from                              |
+| Prompt                    | the built-in system prompt, editable; **Reset to built-in** restores it |
+| More settings             | model, portfolio link, random delays, auto-send on/off          |
 
-1. The queue is every project **published after the toggle went on** that you have not sent
-   a question about — newest first. Nothing older is ever touched.
-2. The dashboard hands the newest one to the extension, which writes a **proposal** with
-   OpenAI (~200–400 words: hook, technical approach, business value, first milestone) that
-   closes with exactly one concrete question. No price, and **no names** — neither yours
-   nor the client's. The model is never even given the client's name, and the greeting is
-   scrubbed afterwards in case one leaked in from the brief.
-3. The extension opens the project on Workana's message tab with the text filled in and,
-   with **Send automatically** on (the default), presses Send in a background tab.
-4. The project is marked `sent` and **drops off the list**. If the Send button can't be
-   found, the tab is left open so you can finish it by hand rather than losing the project.
-   Turn **Send automatically** off to review every proposal before it goes out.
+**What "Start bidding" does**, one project at a time:
 
-Flip it off and the feed goes back to showing the whole archive.
+1. Ask Supabase for the newest project with `bidded = 0`.
+2. Write the proposal with OpenAI (no names, no price, one closing question).
+3. Open the project's Workana message page in a background tab, fill the form, press Send
+   (or, with auto-send off, wait for your click).
+4. Set that project's `bidded = 1`, then move on. When the queue is empty it checks again
+   every 30 seconds until you press **Stop**.
 
-| Setting              | What it does                                                    |
-| -------------------- | --------------------------------------------------------------- |
-| Queue budget range   | min/max on top of the archive's $101 floor; empty side = no bound |
-| Before opening       | random pause after the question is written, before the tab opens |
-| Between projects     | random pause between one project and the next                    |
-| Send automatically   | press Send for you (on by default) instead of waiting for a click |
-| Wait to press Send   | how long the queue waits for you, when auto-send is off           |
-| Question prompt      | the system prompt used to write the question                     |
+A project that fails (OpenAI error, Send not found, tab closed) is **left at `bidded = 0`** and
+skipped for the rest of that run. A bad OpenAI key or a missing database function stops the
+whole run instead of burning through the queue. Sent slugs are also remembered locally, so a
+failed database update can never cause a second proposal to the same project.
+
+The run lives in the background worker, so reloading the Workana page doesn't interrupt it.
 
 ---
 
@@ -228,23 +168,23 @@ Flip it off and the feed goes back to showing the whole archive.
 
 ```
 .
-├── main.py                     # scraper entrypoint (Supabase + enrichment)
-├── requirements.txt
-├── .env.template
+├── main.py                     # scraper entrypoint
+├── purge_nonpassing.py         # one-off: delete stored jobs that fail the current filters
 ├── config/                     # settings + CSS selectors
 ├── scrapers/workana_scraper.py # Selenium listing scraper
-├── parsers/                    # job / date / client-stats parsing
-├── storage/
-│   └── supabase_store.py       # Supabase (Postgres) store
-├── utils/
-│   ├── enrichment.py           # AI category filter → job fields
-│   └── openai_classifier.py    # OpenAI target-type triage (the only AI call)
-├── extension/                  # AskBot Chrome extension (load unpacked)
-│   ├── background.js           # MV3 worker — runs the ask queue
-│   ├── content/bridge.js       # dashboard ↔ extension bridge
-│   ├── content/workana-question.js  # fills Workana's question form, detects Send
-│   └── lib/ask-queue.js        # write question → open pre-filled → wait for Send
-└── web/                        # React dashboard (deploy to Vercel)
-    ├── supabase/*.sql          # run in Supabase, in filename order
-    └── src/                    # components, hooks, lib
+├── parsers/
+│   └── filters.py              # country / price / payment / template filters
+├── storage/supabase_store.py   # Supabase store
+├── utils/                      # AI category filter
+├── supabase/*.sql              # run in Supabase, in filename order
+└── extension/                  # Chrome extension (load unpacked)
+    ├── background.js           # panel lifecycle + runs the bid queue
+    ├── content/panel.js        # draws the right-third side panel
+    ├── content/workana-question.js  # fills Workana's form, detects Send
+    ├── panel/                  # side panel UI (keys, prompt, status, log)
+    └── lib/
+        ├── bid-queue.js        # fetch → write → send → mark bidded
+        ├── supabase-jobs.js    # queue RPC calls
+        ├── default-prompt.js   # the built-in prompt
+        └── openai.js, storage.js, workana.js, parse.js, cookies.js
 ```

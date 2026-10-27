@@ -1,6 +1,6 @@
 """
 One-off: delete archived jobs that don't pass the new filters (country / price /
-payer). New scrapes are already filtered; this cleans out the pre-filter backlog.
+payer / WhatsApp-template). New scrapes are already filtered; this cleans out the pre-filter backlog.
 
 Note: deleting a job cascades to any bid records on it.
 
@@ -12,7 +12,9 @@ sys.path.insert(0, ".")
 
 from config.settings import SUPABASE_URL, SUPABASE_SERVICE_KEY
 from supabase import create_client
-from parsers.filters import passes_country, passes_price, passes_payment_ability
+from parsers.filters import (
+    passes_country, passes_price, passes_payment_ability, passes_not_template,
+)
 
 
 def main():
@@ -20,13 +22,18 @@ def main():
         print("❌ Set SUPABASE_URL and SUPABASE_SERVICE_KEY in .env")
         sys.exit(1)
     client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-    cols = "id,client_country,budget,budget_min,budget_max,budget_type,client_published_projects,client_paid_projects"
+    cols = "id,title,description,client_country,budget,budget_min,budget_max,budget_type,client_published_projects,client_paid_projects"
     rows = (client.table("jobs").select(cols).execute()).data or []
 
     drop = [
         r["id"]
         for r in rows
-        if not (passes_country(r) and passes_price(r) and passes_payment_ability(r))
+        if not (
+            passes_country(r)
+            and passes_price(r)
+            and passes_payment_ability(r)
+            and passes_not_template(r)
+        )
     ]
     print(f"{len(rows)} jobs in DB · {len(drop)} fail the filters and will be deleted")
 
