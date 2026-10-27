@@ -1,10 +1,13 @@
 /**
  * The project queue, read from Supabase with the project's PUBLISHABLE key.
  *
- * That key can only call the two functions defined in supabase/06_bidded.sql —
- * it has no table access — so it is safe to keep inside an extension:
- *   next_unbidded_job(p_skip)  → newest project with bidded = 0
- *   mark_job_bidded(p_job_id)  → sets bidded = 1
+ * That key can only call the two functions defined in supabase/06_bidded.sql
+ * and 07_two_bidders.sql — it has no table access — so it is safe to keep
+ * inside an extension. Both take a bidder slot (1 = first, 2 = second):
+ *   next_unbidded_job(p_skip, p_slot, p_delay_minutes)
+ *       → newest project this slot has not bid on that is at least
+ *         p_delay_minutes old
+ *   mark_job_bidded(p_job_id, p_slot)  → sets bidded (slot 1) / bidded_second (slot 2)
  */
 
 /** An error that will not fix itself on retry (bad key, function missing). */
@@ -37,7 +40,7 @@ async function rpc(cfg, fn, args) {
   const body = (await res.text()).slice(0, 200);
   if (res.status === 404 || /PGRST202/.test(body)) {
     throw new SupabaseConfigError(
-      `Function ${fn} not found — run supabase/06_bidded.sql in the Supabase SQL Editor.`,
+      `Function ${fn} not found — run supabase/06_bidded.sql and 07_two_bidders.sql in the Supabase SQL Editor.`,
     );
   }
   if (res.status === 401 || res.status === 403) {
@@ -47,17 +50,21 @@ async function rpc(cfg, fn, args) {
 }
 
 /**
- * The newest project that has not been bid on yet.
- * @param {object} cfg    settings with supabaseUrl + supabaseKey
+ * The newest project this bidder has not bid on yet and that is old enough.
+ * @param {object} cfg    run settings: supabaseUrl, supabaseKey, slot, delayMin
  * @param {string[]} skip project ids to step over (failed earlier in this run)
  * @returns {Promise<object|null>}
  */
 export async function fetchNextJob(cfg, skip = []) {
-  const rows = await rpc(cfg, 'next_unbidded_job', { p_skip: skip });
+  const rows = await rpc(cfg, 'next_unbidded_job', {
+    p_skip: skip,
+    p_slot: cfg.slot,
+    p_delay_minutes: cfg.delayMin,
+  });
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
-/** Set bidded = 1. @returns {Promise<boolean>} whether a row was updated */
+/** Set this bidder's flag to 1. @returns {Promise<boolean>} whether a row was updated */
 export async function markJobBidded(cfg, jobId) {
-  return (await rpc(cfg, 'mark_job_bidded', { p_job_id: jobId })) === true;
+  return (await rpc(cfg, 'mark_job_bidded', { p_job_id: jobId, p_slot: cfg.slot })) === true;
 }

@@ -25,9 +25,10 @@ Workana ──► Python scraper (VPS) ──► Supabase (Postgres) ◄── C
 1. Create a project at [supabase.com](https://supabase.com).
 2. Open **SQL Editor → New query** and run the files in [`supabase/`](supabase/) **in order**:
    `schema.sql`, `02_auth_multiuser.sql`, `03_cleanup.sql`, `04_ask_questions.sql`,
-   `05_drop_ai_summary.sql`, and **`06_bidded.sql`**. Each file is idempotent.
+   `05_drop_ai_summary.sql`, **`06_bidded.sql`**, and **`07_two_bidders.sql`**. Each file is idempotent.
    `06_bidded.sql` adds `jobs.bidded` (`0` = not bid on yet, `1` = bid sent) and the two
-   functions the extension calls. The extension's publishable key gets **no table access** —
+   functions the extension calls; `07_two_bidders.sql` adds `jobs.bidded_second` and makes
+   those functions bidder-aware. The extension's publishable key gets **no table access** —
    only `next_unbidded_job()` and `mark_job_bidded()`.
 3. From **Settings → API Keys**, grab:
    - **Project URL** — scraper and extension.
@@ -141,21 +142,28 @@ site the icon opens Workana with the panel showing.
 
 | Field                     | What it is                                                     |
 | ------------------------- | -------------------------------------------------------------- |
+| Bidder                    | **First** (bids right away) or **Second** (waits N minutes, default 20) |
 | OpenAI API key            | used to write each proposal (stored in this browser only)       |
 | Supabase URL / publishable key | where the queue is read from                              |
 | Prompt                    | the built-in system prompt, editable; **Reset to built-in** restores it |
 | More settings             | model, portfolio link, random delays, auto-send on/off          |
 
+**Two bidders.** Up to two people run the extension, each in their own browser and Workana
+account, and **both bid on every project**. The first bidder bids as soon as a project is
+stored; the second bids once it has been stored for the chosen number of minutes (counted from
+when the scraper saved it, so it works even if the first bidder is offline). Each has their own
+flag: `bidded` (first) and `bidded_second` (second). Use a different Workana account for each.
+
 **What "Start bidding" does**, one project at a time:
 
-1. Ask Supabase for the newest project with `bidded = 0`.
+1. Ask Supabase for the newest project this bidder hasn't bid on (and that is old enough for them).
 2. Write the proposal with OpenAI (no names, no price, one closing question).
 3. Open the project's Workana message page in a background tab, fill the form, press Send
    (or, with auto-send off, wait for your click).
-4. Set that project's `bidded = 1`, then move on. When the queue is empty it checks again
+4. Set this bidder's flag (`bidded`, or `bidded_second` for the second bidder) to `1`, then move on. When the queue is empty it checks again
    every 30 seconds until you press **Stop**.
 
-A project that fails (OpenAI error, Send not found, tab closed) is **left at `bidded = 0`** and
+A project that fails (OpenAI error, Send not found, tab closed) is **left unmarked** and
 skipped for the rest of that run. A bad OpenAI key or a missing database function stops the
 whole run instead of burning through the queue. Sent slugs are also remembered locally, so a
 failed database update can never cause a second proposal to the same project.

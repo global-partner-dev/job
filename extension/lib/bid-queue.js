@@ -148,8 +148,9 @@ function toProject(row) {
 
 /**
  * Work through the database queue one project at a time:
- *   fetch the newest bidded = 0 project → write the proposal → send it on
- *   Workana → set bidded = 1 → next project.
+ *   fetch the newest project this bidder hasn't bid on (and that is old enough
+ *   for it) → write the proposal → send it on Workana → set this bidder's
+ *   flag to 1 → next project.
  * When the queue is empty it keeps polling (the scraper adds jobs continuously)
  * until stopped.
  *
@@ -159,6 +160,9 @@ function toProject(row) {
 export async function runBidQueue(cfg, { update, log, isStopped }) {
   const skip = []; // ids that failed / were not sent during this run
   const sentBefore = await getSentSlugs();
+  // First bidder keeps the bare slug (as before); the second is namespaced so
+  // switching roles in one browser never makes it skip projects it hasn't sent.
+  const sentKey = (slug) => (cfg.slot === 2 ? `2:${slug}` : slug);
   const sendWaitMs = Math.max(30, Number(cfg.sendWaitSec) || 300) * 1000;
   let sent = 0;
   let failed = 0;
@@ -179,7 +183,14 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
     }
 
     if (!row) {
-      update({ phase: 'waiting', current: null, message: 'Queue empty — checking again in 30s' });
+      update({
+        phase: 'waiting',
+        current: null,
+        message:
+          cfg.slot === 2
+            ? `No project is ${cfg.delayMin} min old yet — checking again in 30s`
+            : 'Queue empty — checking again in 30s',
+      });
       await keepAliveSleep(EMPTY_POLL_MS, isStopped);
       continue;
     }
@@ -189,7 +200,7 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
     update({ current: job, phase: 'preparing', message: 'Reading the project…' });
 
     // Already sent in an earlier run but the database never got the flag.
-    if (sentBefore.has(slug)) {
+    if (sentBefore.has(sentKey(slug))) {
       log(`${job.title}: already sent earlier — marking bidded`, 'info');
       try {
         await markJobBidded(cfg, slug);
@@ -258,7 +269,7 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
       // ---- 5. set bidded = 1 ---------------------------------------------
       if (outcome === 'sent') {
         sent++;
-        await markSlugSent(slug); // local guard first: never send twice
+        await markSlugSent(sentKey(slug)); // local guard first: never send twice
         skip.push(slug); // and don't re-fetch it if the DB update below fails
         try {
           const ok = await markJobBidded(cfg, slug);

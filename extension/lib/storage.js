@@ -22,6 +22,13 @@ export const DEFAULT_SETTINGS = {
   supabaseUrl: '',
   /** Supabase publishable (anon) key — the queue functions in 06_bidded.sql. */
   supabaseKey: '',
+  /**
+   * Which of the two bidders this browser is. The first bids right away; the
+   * second waits `secondDelayMin` minutes after a project was stored. Each has
+   * its own flag in the database, so both bid on every project.
+   */
+  bidderRole: 'first',
+  secondDelayMin: 20,
   /** Random pause after the proposal is written, before the tab opens. */
   genDelayMinSec: 2,
   genDelayMaxSec: 5,
@@ -49,8 +56,12 @@ export async function saveSettings(patch) {
 /** Settings as the queue uses them, with the effective system prompt resolved. */
 export async function getRunSettings() {
   const s = await loadSettings();
+  const slot = s.bidderRole === 'second' ? 2 : 1;
   return {
     ...s,
+    slot,
+    /** Minutes a project must have been stored before this bidder takes it. */
+    delayMin: slot === 2 ? Math.max(0, Number(s.secondDelayMin) || 0) : 0,
     openaiApiKey: s.openaiApiKey.trim(),
     supabaseUrl: s.supabaseUrl.trim().replace(/\/+$/, ''),
     supabaseKey: s.supabaseKey.trim(),

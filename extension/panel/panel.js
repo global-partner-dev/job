@@ -3,12 +3,17 @@ import { DEFAULT_PROMPT } from '../lib/default-prompt.js';
 
 const $ = (id) => document.getElementById(id);
 
-const TEXT_FIELDS = ['openaiApiKey', 'supabaseUrl', 'supabaseKey', 'model', 'portfolioUrl'];
-const NUMBER_FIELDS = ['genDelayMinSec', 'genDelayMaxSec', 'gapDelayMinSec', 'gapDelayMaxSec', 'sendWaitSec'];
+const TEXT_FIELDS = ['bidderRole', 'openaiApiKey', 'supabaseUrl', 'supabaseKey', 'model', 'portfolioUrl'];
+const NUMBER_FIELDS = ['secondDelayMin', 'genDelayMinSec', 'genDelayMaxSec', 'gapDelayMinSec', 'gapDelayMaxSec', 'sendWaitSec'];
 
 // ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
+/** The wait only applies to the second bidder. */
+function syncRole() {
+  $('delay-row').hidden = $('bidderRole').value !== 'second';
+}
+
 function promptNote() {
   const custom = $('prompt').value.trim() !== DEFAULT_PROMPT.trim();
   $('prompt-note').textContent = custom ? 'Edited prompt.' : 'Built-in prompt.';
@@ -22,6 +27,7 @@ async function fillForm() {
   $('autoSend').checked = !!s.autoSend;
   $('prompt').value = s.customPrompt.trim() || DEFAULT_PROMPT;
   promptNote();
+  syncRole();
 }
 
 function readForm() {
@@ -29,7 +35,8 @@ function readForm() {
   for (const id of TEXT_FIELDS) patch[id] = $(id).value.trim();
   for (const id of NUMBER_FIELDS) {
     const n = Number($(id).value);
-    if (Number.isFinite(n) && n > 0) patch[id] = n;
+    // The second bidder's wait may be 0 (= no wait); every other number must be positive.
+    if (Number.isFinite(n) && n >= (id === 'secondDelayMin' ? 0 : 1)) patch[id] = n;
   }
   patch.autoSend = $('autoSend').checked;
   // Leaving the prompt as the built-in one stores nothing, so a later update to
@@ -51,11 +58,12 @@ async function flushSave() {
   await saveSettings(readForm());
 }
 
-document.querySelectorAll('input, textarea').forEach((el) => {
+document.querySelectorAll('input, textarea, select').forEach((el) => {
   el.addEventListener('input', scheduleSave);
   el.addEventListener('change', scheduleSave);
 });
 $('prompt').addEventListener('input', promptNote);
+$('bidderRole').addEventListener('change', syncRole);
 $('reset-prompt').addEventListener('click', () => {
   $('prompt').value = DEFAULT_PROMPT;
   promptNote();

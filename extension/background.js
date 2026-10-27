@@ -61,7 +61,12 @@ async function startRun() {
 
   stopFlag = false;
   state = { ...IDLE, running: true, phase: 'preparing', message: 'Starting…' };
-  log('Started.', 'info');
+  log(
+    cfg.slot === 2
+      ? `Started as the second bidder (waits ${cfg.delayMin} min after a project is stored).`
+      : 'Started as the first bidder (bids right away).',
+    'info',
+  );
   broadcast();
 
   try {
