@@ -22,7 +22,8 @@ from parsers.client_stats import (
 from parsers.filters import passes_listing_filters, passes_client_filters
 from utils.enrichment import UNJUDGED, job_matches_target_category
 from utils.openai_classifier import OpenAIClassifier
-from config.settings import AI_CATEGORY_FILTER
+from config.settings import AI_CATEGORY_FILTER, CAPTURE_FROM_NOW
+from storage.baseline import load_baseline, save_baseline
 
 
 def run_scrape(db, scraper, classifier):
@@ -49,6 +50,26 @@ def run_scrape(db, scraper, classifier):
             print("⚠️  Page load failed — browser will restart before next run")
 
         print(f"Scraped {len(scraped_jobs)} jobs total")
+
+        # Capture from now on: the very first scrape only records what is
+        # already listed; later runs ignore those ids.
+        if CAPTURE_FROM_NOW:
+            baseline = load_baseline()
+            if baseline is None:
+                listed = [j['id'] for j in scraped_jobs if j.get('id')]
+                if scrape_failed or not listed:
+                    print("⚠️  Nothing to record as the starting point yet — will retry next run")
+                    return False
+                save_baseline(listed)
+                print(
+                    f"📍 Starting point set: {len(listed)} projects already posted were recorded, "
+                    "not stored. Only projects posted from now on will be captured."
+                )
+                return True
+            before = len(scraped_jobs)
+            scraped_jobs = [j for j in scraped_jobs if j.get('id') not in baseline]
+            if before != len(scraped_jobs):
+                print(f"Ignored {before - len(scraped_jobs)} projects posted before the starting point")
 
         # Stage 1 — cheap listing filters (country + price + template), no fetch needed.
         stage1 = []

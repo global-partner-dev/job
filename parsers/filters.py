@@ -3,13 +3,17 @@ Archive filters — only projects that pass ALL of these are stored:
 
   1. Country/region: allow only the Americas + Spain & Portugal.
      (All of Asia, Africa, Oceania, and the rest of Europe are excluded.)
-  2. Price: exclude fixed-price projects under $101.
+  2. Price: exclude fixed-price projects under $101 — i.e. Workana's "Less than
+     $50" and "$50 - 100" bands. Every hourly band is kept.
   3. Client payment ability: exclude clients who posted 2+ projects but have
      paid for none (published >= 2 and paid == 0).
-  4. Template projects: exclude WhatsApp chatbot / WhatsApp automation posts.
+  4. Template projects: exclude WhatsApp chatbot / automated-response posts.
      These are boilerplate listings (e.g. "Seeking an expert in automated
      WhatsApp messaging responses") that people publish only to collect bids.
+     Detected by skills (Chatbot + Natural Language Processing both tagged) or,
+     failing that, by WhatsApp + bot/automation wording in the title and brief.
 """
+import json
 import re
 from typing import Dict, Optional, Tuple
 
@@ -48,6 +52,12 @@ _AUTOMATION_RE = re.compile(
     r"\bapi\b.*\bwhats|\bwhats\w*\b.*\bapi\b",
     re.IGNORECASE,
 )
+
+# Skill tags Workana puts on these posts. A project tagged with at least
+# TEMPLATE_SKILLS_MIN of them is a template. Skill names stay in English even on
+# Portuguese and Spanish listings.
+TEMPLATE_SKILLS = ("chatbot", "natural language processing")
+TEMPLATE_SKILLS_MIN = 2
 
 # How much of the description counts as "the project is about WhatsApp". A long
 # brief that mentions WhatsApp in passing (e.g. a CRM with WhatsApp
@@ -88,13 +98,36 @@ def passes_payment_ability(job: Dict, min_published: int = NONPAYER_MIN_PUBLISHE
     return not (paid == 0 and published >= min_published)
 
 
+def _skill_names(job: Dict) -> set:
+    """The job's skills, lower-cased. Accepts a list or a JSON-encoded list."""
+    skills = job.get("skills")
+    if isinstance(skills, str):
+        try:
+            skills = json.loads(skills)
+        except ValueError:
+            skills = [skills]
+    return {str(s).strip().lower() for s in (skills or [])}
+
+
+def has_template_skills(job: Dict) -> bool:
+    """Tagged with at least TEMPLATE_SKILLS_MIN of the chatbot/NLP skills."""
+    names = _skill_names(job)
+    return sum(1 for s in TEMPLATE_SKILLS if s in names) >= TEMPLATE_SKILLS_MIN
+
+
 def is_template_project(job: Dict) -> bool:
     """
-    True for WhatsApp chatbot / WhatsApp automation template posts.
+    True for WhatsApp chatbot / automated-response template posts.
 
-    WhatsApp has to be the subject — in the title or the opening of the brief —
-    and the post has to be about bots or automation anywhere in title + brief.
+    Either signal is enough:
+      * skills — the post is tagged with both "Chatbot" and "Natural Language
+        Processing" (the most reliable one, and available from the listing);
+      * wording — WhatsApp is the subject (title or opening of the brief) and
+        the post is about bots or automation anywhere in title + brief. This
+        also catches WhatsApp bots that carry only one of the two skills.
     """
+    if has_template_skills(job):
+        return True
     title = job.get("title") or ""
     description = job.get("description") or ""
     lead = f"{title}\n{description[:_TEMPLATE_LEAD_CHARS]}"
@@ -115,7 +148,7 @@ def passes_listing_filters(job: Dict) -> Tuple[bool, str]:
     if not passes_price(job):
         return False, f"budget under ${MIN_BUDGET_USD}: {job.get('budget') or 'n/a'}"
     if not passes_not_template(job):
-        return False, "template project (WhatsApp chatbot / automation)"
+        return False, "template project (chatbot / automated WhatsApp replies)"
     return True, ""
 
 
@@ -128,5 +161,5 @@ def passes_client_filters(job: Dict) -> Tuple[bool, str]:
         )
     # The listing only carries a ~350-char preview; the full brief is known now.
     if not passes_not_template(job):
-        return False, "template project (WhatsApp chatbot / automation)"
+        return False, "template project (chatbot / automated WhatsApp replies)"
     return True, ""

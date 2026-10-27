@@ -22,7 +22,7 @@ def main():
         print("❌ Set SUPABASE_URL and SUPABASE_SERVICE_KEY in .env")
         sys.exit(1)
     client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-    cols = "id,title,description,client_country,budget,budget_min,budget_max,budget_type,client_published_projects,client_paid_projects"
+    cols = "id,title,description,skills,client_country,budget,budget_min,budget_max,budget_type,client_published_projects,client_paid_projects"
     rows = (client.table("jobs").select(cols).execute()).data or []
 
     drop = [

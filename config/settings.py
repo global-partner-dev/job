@@ -89,6 +89,11 @@ LOG_FILE = BASE_DIR / 'scraper.log'
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '').strip()
 OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini').strip()
 
+# Capture from now on — the first scrape records what is already listed on
+# Workana as the starting point and stores none of it; only projects posted
+# afterwards are kept. Set to '0' to store the current listing as well.
+CAPTURE_FROM_NOW = os.getenv('CAPTURE_FROM_NOW', '1').strip().lower() not in ('0', 'false', 'no', '')
+
 # AI category filter — when on, only store jobs the AI classifies as one of the
 # target project types (SaaS, corporate/service sites excl. WordPress, custom
 # CRM/ERP, Python apps / API integrations, Shopify). Set to '0'/'false' to keep

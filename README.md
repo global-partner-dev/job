@@ -121,7 +121,7 @@ Every stored project must pass all of these — see [`parsers/filters.py`](parse
 | Country         | Americas + Spain & Portugal only; unknown country is excluded     |
 | Price           | fixed-price under **$101** excluded (hourly / no-budget kept)     |
 | Payment ability | clients with 2+ published projects and **0 paid** are excluded    |
-| Template posts  | WhatsApp chatbot / WhatsApp automation posts are excluded          |
+| Template posts  | tagged with both **Chatbot** and **Natural Language Processing**, or WhatsApp bot/automation wording |
 | AI category     | only the target project types (`AI_CATEGORY_FILTER=1`)            |
 
 ---

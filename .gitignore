@@ -41,3 +41,7 @@ Thumbs.db
 chromedriver
 geckodriver
 
+
+# Capture-from-now starting point (local scraper state)
+scraper_baseline.json
+scraper_baseline.tmp
