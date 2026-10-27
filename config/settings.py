@@ -16,9 +16,14 @@ if env_path.exists():
 else:
     load_dotenv(encoding='utf-8-sig', override=True)
 
-# Supabase (primary datastore) — scraper writes with the service-role key
+# Supabase (primary datastore) — the scraper writes with the secret key
+# (SUPABASE_SECRET_KEY, `sb_secret_…`). The legacy service_role JWT in
+# SUPABASE_SERVICE_KEY still works as a fallback.
 SUPABASE_URL = os.getenv('SUPABASE_URL', '').strip()
-SUPABASE_SERVICE_KEY = os.getenv('SUPABASE_SERVICE_KEY', '').strip()
+SUPABASE_SERVICE_KEY = (
+    os.getenv('SUPABASE_SECRET_KEY', '').strip()
+    or os.getenv('SUPABASE_SERVICE_KEY', '').strip()
+)
 
 # Scraping settings
 BASE_URL = "https://www.workana.com"
