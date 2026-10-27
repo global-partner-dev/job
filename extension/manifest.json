@@ -2,8 +2,13 @@
   "manifest_version": 3,
   "name": "Workana Radar Bid Bot",
   "version": "4.0.0",
-  "description": "Takes projects one by one from your Supabase database, writes a proposal with OpenAI, sends it on Workana, and marks the project bidded. Lives in a side panel on the right third of the page.",
-  "permissions": ["storage", "cookies", "tabs", "scripting"],
+  "description": "Takes projects one by one from your Supabase database, writes a proposal with OpenAI, sends it on Workana, and marks the project bidded. Opens in Chrome's side panel next to the Workana page.",
+  "permissions": [
+    "storage",
+    "cookies",
+    "tabs",
+    "sidePanel"
+  ],
   "host_permissions": [
     "https://www.workana.com/*",
     "https://api.openai.com/*",
@@ -18,11 +23,6 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.workana.com/*"],
-      "js": ["content/panel.js"],
-      "run_at": "document_idle"
-    },
-    {
       "matches": [
         "https://www.workana.com/messages/*",
         "https://www.workana.com/es/messages/*",
@@ -31,19 +31,19 @@
         "https://www.workana.com/es/inbox/*",
         "https://www.workana.com/pt/inbox/*"
       ],
-      "js": ["content/workana-question.js"],
+      "js": [
+        "content/workana-question.js"
+      ],
       "run_at": "document_idle"
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["panel/panel.html"],
-      "matches": ["https://www.workana.com/*"]
     }
   ],
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "minimum_chrome_version": "114",
+  "side_panel": {
+    "default_path": "panel/panel.html"
   }
 }

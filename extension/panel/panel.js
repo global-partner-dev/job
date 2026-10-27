@@ -112,8 +112,5 @@ $('start').addEventListener('click', async () => {
   port.postMessage({ type: 'START' });
 });
 $('stop').addEventListener('click', () => port.postMessage({ type: 'STOP' }));
-$('close').addEventListener('click', () => {
-  window.parent.postMessage({ source: 'wr-askbot-panel', type: 'close' }, '*');
-});
 
 fillForm();

@@ -4,8 +4,7 @@ Two parts around one **Supabase** (Postgres) database:
 
 1. **Python scraper** (`/`) — runs on your VPS, scrapes IT/programming jobs from
    [Workana](https://www.workana.com), filters them, and stores only the relevant ones.
-2. **Chrome extension** (`extension/`) — a side panel on the right third of the browser
-   window. It takes projects from the database one by one, writes a proposal with OpenAI,
+2. **Chrome extension** (`extension/`) — a Chrome side panel next to the Workana page. It takes projects from the database one by one, writes a proposal with OpenAI,
    sends it on Workana, and sets the project's `bidded` field to `1`.
 
 ```
@@ -134,9 +133,10 @@ Every stored project must pass all of these — see [`parsers/filters.py`](parse
 Load it once: **chrome://extensions → Developer mode → Load unpacked → `extension/`**.
 Sign in to Workana in the same Chrome profile.
 
-Click the toolbar icon on any Workana page: the panel opens on the **right third of the
-window** and the page shrinks to fit beside it. Click again (or ×) to close it. On any other
-site the icon opens Workana with the panel showing.
+Click the toolbar icon: the panel opens in **Chrome's side panel** on the right, and Chrome
+narrows the Workana page to fit beside it, so nothing is covered. Drag the panel's left edge to
+make it as wide as you like — Chrome remembers the width. Click the icon again, or use the
+side panel's own close button, to hide it. Needs Chrome 114 or newer.
 
 **Fields in the panel**
 
@@ -186,10 +186,9 @@ The run lives in the background worker, so reloading the Workana page doesn't in
 ├── utils/                      # AI category filter
 ├── supabase/*.sql              # run in Supabase, in filename order
 └── extension/                  # Chrome extension (load unpacked)
-    ├── background.js           # panel lifecycle + runs the bid queue
-    ├── content/panel.js        # draws the right-third side panel
+    ├── background.js           # opens the side panel + runs the bid queue
     ├── content/workana-question.js  # fills Workana's form, detects Send
-    ├── panel/                  # side panel UI (keys, prompt, status, log)
+    ├── panel/                  # side panel UI (bidder role, keys, prompt, status, log)
     └── lib/
         ├── bid-queue.js        # fetch → write → send → mark bidded
         ├── supabase-jobs.js    # queue RPC calls
