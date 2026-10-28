@@ -30,12 +30,15 @@
 
     <section>
       <h2>Bidder</h2>
-      <label>This browser is the
-        <select id="bidderRole">
-          <option value="first">First bidder — bids right away</option>
-          <option value="second">Second bidder — waits before bidding</option>
-        </select>
-      </label>
+      <fieldset>
+        <legend>This browser is the</legend>
+        <label class="check">
+          <input type="radio" name="bidderRole" value="first" /> <span><b>First bidder</b> — bids right away</span>
+        </label>
+        <label class="check">
+          <input type="radio" name="bidderRole" value="second" /> <span><b>Second bidder</b> — waits before bidding</span>
+        </label>
+      </fieldset>
       <label id="delay-row">Wait after a project is stored (minutes)
         <input id="secondDelayMin" type="number" min="0" />
       </label>

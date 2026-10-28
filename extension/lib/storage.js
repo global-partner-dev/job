@@ -1,4 +1,4 @@
-import { DEFAULT_PROMPT } from './default-prompt.js';
+import { defaultPromptFor } from './default-prompt.js';
 
 /**
  * Extension-local storage.
@@ -16,7 +16,7 @@ const LOG_KEY = 'activityLog';
 export const DEFAULT_SETTINGS = {
   openaiApiKey: '',
   model: 'gpt-6-luna',
-  /** Empty = use the built-in prompt (DEFAULT_PROMPT). */
+  /** Empty = use the built-in prompt for the chosen bidder role. */
   customPrompt: '',
   portfolioUrl: '',
   supabaseUrl: '',
@@ -86,7 +86,7 @@ export async function getRunSettings() {
     openaiApiKey: s.openaiApiKey.trim(),
     supabaseUrl: s.supabaseUrl.trim().replace(/\/+$/, ''),
     supabaseKey: s.supabaseKey.trim(),
-    systemPrompt: s.customPrompt.trim() || DEFAULT_PROMPT,
+    systemPrompt: s.customPrompt.trim() || defaultPromptFor(s.bidderRole),
   };
 }
 

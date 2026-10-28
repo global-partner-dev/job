@@ -1,9 +1,9 @@
 import { loadSettings, saveSettings, getFollowUps, FOLLOWUP_KEY } from '../lib/storage.js';
-import { DEFAULT_PROMPT } from '../lib/default-prompt.js';
+import { defaultPromptFor } from '../lib/default-prompt.js';
 
 const $ = (id) => document.getElementById(id);
 
-const TEXT_FIELDS = ['bidderRole', 'openaiApiKey', 'supabaseUrl', 'supabaseKey', 'model', 'portfolioUrl', 'followUpMessage'];
+const TEXT_FIELDS = ['openaiApiKey', 'supabaseUrl', 'supabaseKey', 'model', 'portfolioUrl', 'followUpMessage'];
 const NUMBER_FIELDS = ['secondDelayMin', 'followUpHours', 'genDelayMinSec', 'genDelayMaxSec', 'gapDelayMinSec', 'gapDelayMaxSec', 'sendWaitSec'];
 
 /** Whether `n` is acceptable for a field: the second bidder's wait may be 0 (= no wait), the follow-up delay is any positive number of hours, the rest at least 1. */
@@ -13,29 +13,46 @@ const validNumber = (id, n) =>
 // ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
+const roleRadios = () => [...document.querySelectorAll('input[name="bidderRole"]')];
+const getRole = () => roleRadios().find((r) => r.checked)?.value ?? 'first';
+
 /** The wait only applies to the second bidder. */
 function syncRole() {
-  $('delay-row').hidden = $('bidderRole').value !== 'second';
+  $('delay-row').hidden = getRole() !== 'second';
 }
 
+/** The built-in prompt for the bidder role currently chosen. */
+const builtIn = () => defaultPromptFor(getRole());
+let shownRole = 'first'; // the role whose built-in prompt the box was last filled for
+
 function promptNote() {
-  const custom = $('prompt').value.trim() !== DEFAULT_PROMPT.trim();
-  $('prompt-note').textContent = custom ? 'Edited prompt.' : 'Built-in prompt.';
+  const custom = $('prompt').value.trim() !== builtIn().trim();
+  $('prompt-note').textContent = custom ? 'Edited prompt.' : `Built-in prompt (${getRole()} bidder).`;
   $('reset-prompt').disabled = !custom;
+}
+
+/** Switching role swaps an untouched prompt for the other built-in; an edited one stays. */
+function followRoleWithPrompt() {
+  const previous = defaultPromptFor(shownRole);
+  shownRole = getRole();
+  if ($('prompt').value.trim() === previous.trim()) $('prompt').value = builtIn();
+  promptNote();
 }
 
 async function fillForm() {
   const s = await loadSettings();
+  for (const r of roleRadios()) r.checked = r.value === (s.bidderRole === 'second' ? 'second' : 'first');
   for (const id of TEXT_FIELDS) $(id).value = s[id] ?? '';
   for (const id of NUMBER_FIELDS) $(id).value = s[id];
   $('autoSend').checked = !!s.autoSend;
-  $('prompt').value = s.customPrompt.trim() || DEFAULT_PROMPT;
+  shownRole = getRole();
+  $('prompt').value = s.customPrompt.trim() || builtIn();
   promptNote();
   syncRole();
 }
 
 function readForm() {
-  const patch = {};
+  const patch = { bidderRole: getRole() };
   for (const id of TEXT_FIELDS) patch[id] = $(id).value.trim();
   for (const id of NUMBER_FIELDS) {
     const n = Number($(id).value);
@@ -45,7 +62,7 @@ function readForm() {
   // Leaving the prompt as the built-in one stores nothing, so a later update to
   // the built-in text reaches everyone who never customised it.
   const prompt = $('prompt').value.trim();
-  patch.customPrompt = prompt === DEFAULT_PROMPT.trim() ? '' : prompt;
+  patch.customPrompt = prompt === builtIn().trim() ? '' : prompt;
   return patch;
 }
 
@@ -61,14 +78,19 @@ async function flushSave() {
   await saveSettings(readForm());
 }
 
-document.querySelectorAll('input, textarea, select').forEach((el) => {
+document.querySelectorAll('input, textarea').forEach((el) => {
   el.addEventListener('input', scheduleSave);
   el.addEventListener('change', scheduleSave);
 });
 $('prompt').addEventListener('input', promptNote);
-$('bidderRole').addEventListener('change', syncRole);
+roleRadios().forEach((r) =>
+  r.addEventListener('change', () => {
+    syncRole();
+    followRoleWithPrompt();
+  }),
+);
 $('reset-prompt').addEventListener('click', () => {
-  $('prompt').value = DEFAULT_PROMPT;
+  $('prompt').value = builtIn();
   promptNote();
   scheduleSave();
 });

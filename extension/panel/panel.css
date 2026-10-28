@@ -60,19 +60,10 @@ input[type="text"], input[type="url"], input[type="password"], input[type="numbe
   border-radius: 6px;
   font: inherit;
 }
-select {
-  display: block;
-  width: 100%;
-  margin-top: 4px;
-  padding: 7px 9px;
-  background: var(--field);
-  color: var(--fg);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  font: inherit;
-}
+fieldset { border: 0; margin: 0 0 10px; padding: 0; min-width: 0; }
+legend { padding: 0; margin-bottom: 6px; color: var(--muted); font-size: 12px; }
 textarea { resize: vertical; font-size: 12px; line-height: 1.4; }
-input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus-visible {
+input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
@@ -95,7 +86,7 @@ button.icon { padding: 2px 9px; font-size: 18px; line-height: 1.1; border-color:
 .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
 .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 label.check { display: flex; align-items: center; gap: 8px; color: var(--fg); }
-label.check input { margin: 0; }
+label.check input { margin: 0; flex: none; }
 details summary { cursor: pointer; font-weight: 600; margin-bottom: 10px; }
 .hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
 
