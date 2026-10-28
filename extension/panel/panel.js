@@ -73,7 +73,54 @@ $('reset-prompt').addEventListener('click', () => {
 // ---------------------------------------------------------------------------
 // Run state, pushed by the background worker
 // ---------------------------------------------------------------------------
-const port = chrome.runtime.connect({ name: 'panel' });
+// Chrome shuts the background worker down after ~30s of inactivity, which closes
+// this port. So the port is opened on demand: a click on Start or Stop connects
+// again (waking the worker) instead of talking to a dead connection.
+let port = null;
+let lastSnapshot = null;
+
+function connect() {
+  port = chrome.runtime.connect({ name: 'panel' });
+  port.onMessage.addListener((msg) => {
+    if (msg?.type === 'SNAPSHOT') {
+      lastSnapshot = msg.payload;
+      render(msg.payload);
+    }
+  });
+  port.onDisconnect.addListener(() => {
+    port = null;
+    void chrome.runtime.lastError;
+    // A run keeps the worker awake, so a disconnect mid-run means it died.
+    if (lastSnapshot?.state.running) {
+      render({
+        state: {
+          ...lastSnapshot.state,
+          running: false,
+          phase: 'error',
+          message: 'Background worker stopped — press Start to resume.',
+        },
+        logs: lastSnapshot.logs,
+      });
+    }
+  });
+}
+
+/** Send a command, reconnecting first if the worker went to sleep. */
+function sendCommand(msg) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      if (!port) connect();
+      port.postMessage(msg);
+      return;
+    } catch {
+      port = null;
+    }
+  }
+  render({
+    state: { running: false, phase: 'error', message: 'Could not reach the background worker. Reload the extension.', current: null, sent: 0, failed: 0 },
+    logs: [],
+  });
+}
 
 function render({ state, logs }) {
   $('status').textContent = state.message || '';
@@ -103,14 +150,11 @@ function render({ state, logs }) {
   );
 }
 
-port.onMessage.addListener((msg) => {
-  if (msg?.type === 'SNAPSHOT') render(msg.payload);
-});
-
 $('start').addEventListener('click', async () => {
   await flushSave();
-  port.postMessage({ type: 'START' });
+  sendCommand({ type: 'START' });
 });
-$('stop').addEventListener('click', () => port.postMessage({ type: 'STOP' }));
+$('stop').addEventListener('click', () => sendCommand({ type: 'STOP' }));
 
+connect();
 fillForm();

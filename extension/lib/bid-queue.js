@@ -79,6 +79,7 @@ function waitForSend(slug, tabId, timeoutMs) {
       sentWaiters.delete(slug);
       chrome.tabs.onRemoved.removeListener(onRemoved);
       clearTimeout(timer);
+      clearInterval(pinger);
       resolve(outcome);
     };
     const onRemoved = (id) => {
@@ -88,6 +89,9 @@ function waitForSend(slug, tabId, timeoutMs) {
     sentWaiters.set(slug, () => finish('sent'));
     chrome.tabs.onRemoved.addListener(onRemoved);
     const timer = setTimeout(() => finish('timeout'), timeoutMs);
+    // No extension event fires while we wait for the click, so poke an API every
+    // <30s or Chrome shuts the worker (and the whole run) down mid-wait.
+    const pinger = setInterval(() => chrome.runtime.getPlatformInfo().catch(() => {}), 20000);
   });
 }
 
