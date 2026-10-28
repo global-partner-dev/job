@@ -1,141 +1,17 @@
-import { fetchProjectDetails, askQuestionPageUrl, projectPageUrl } from './workana.js';
+import { fetchProjectDetails, projectPageUrl } from './workana.js';
 import { generateQuestion } from './openai.js';
 import { fetchNextJob, markJobBidded, SupabaseConfigError } from './supabase-jobs.js';
 import { getSentSlugs, markSlugSent, appendLog } from './storage.js';
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+import { sleep, keepAliveSleep, randMs } from './timing.js';
+import { openAndFill, waitForSend, closeTab } from './tab-send.js';
+import { scheduleFollowUp } from './followups.js';
 
 /** How long to wait before looking again once the queue is empty. */
 const EMPTY_POLL_MS = 30000;
 
-/**
- * Sleep that keeps the MV3 service worker alive. An idle connected port does NOT
- * reset the ~30s idle timer (Chrome 114+), so we poke an extension API every
- * <30s to keep the worker running through long waits.
- */
-async function keepAliveSleep(ms, isStopped = () => false) {
-  const PING_MS = 20000;
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    if (isStopped()) return;
-    await sleep(Math.min(PING_MS, end - Date.now()));
-    try {
-      await chrome.runtime.getPlatformInfo(); // resets the SW idle timer
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
-/** Random delay in ms within [minSec, maxSec]. */
-function randMs(minSec, maxSec) {
-  const lo = Math.max(1, Number(minSec) || 1);
-  const hi = Math.max(lo, Number(maxSec) || lo);
-  return Math.round((lo + Math.random() * (hi - lo)) * 1000);
-}
-
-function waitForComplete(tabId, timeoutMs = 20000) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = () => {
-      if (settled) return;
-      settled = true;
-      chrome.tabs.onUpdated.removeListener(onUpdated);
-      resolve();
-    };
-    const onUpdated = (id, info) => {
-      if (id === tabId && info.status === 'complete') done();
-    };
-    chrome.tabs.onUpdated.addListener(onUpdated);
-    chrome.tabs.get(tabId).then(
-      (t) => {
-        if (t?.status === 'complete') done();
-      },
-      () => done(),
-    );
-    setTimeout(done, timeoutMs);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// "Sent" signal — the content script reports the real form submit on the
-// Workana page, which is what lets a manual-send run move on.
-// ---------------------------------------------------------------------------
-const sentWaiters = new Map(); // slug → resolve fn
-
-/** Called from background.js when a content script reports a submitted form. */
-export function noteQuestionSent(slug) {
-  const resolve = sentWaiters.get(slug);
-  if (resolve) resolve('sent');
-}
-
-/** @returns {Promise<'sent'|'closed'|'timeout'>} */
-function waitForSend(slug, tabId, timeoutMs) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (outcome) => {
-      if (settled) return;
-      settled = true;
-      sentWaiters.delete(slug);
-      chrome.tabs.onRemoved.removeListener(onRemoved);
-      clearTimeout(timer);
-      clearInterval(pinger);
-      resolve(outcome);
-    };
-    const onRemoved = (id) => {
-      if (id === tabId) finish('closed');
-    };
-
-    sentWaiters.set(slug, () => finish('sent'));
-    chrome.tabs.onRemoved.addListener(onRemoved);
-    const timer = setTimeout(() => finish('timeout'), timeoutMs);
-    // No extension event fires while we wait for the click, so poke an API every
-    // <30s or Chrome shuts the worker (and the whole run) down mid-wait.
-    const pinger = setInterval(() => chrome.runtime.getPlatformInfo().catch(() => {}), 20000);
-  });
-}
-
-/**
- * Open the project's message page on its "Ask a question" tab, fill the
- * proposal, and (when autoSend is on) press Send.
- * @returns {Promise<{tabId:number|null, filled:boolean, sent:boolean}>}
- */
-async function openAndFill(slug, text, autoSend) {
-  const tab = await chrome.tabs.create({
-    url: askQuestionPageUrl(slug),
-    active: !autoSend, // auto-send runs in the background, out of your way
-  });
-  await waitForComplete(tab.id);
-
-  for (let attempt = 0; attempt < 10; attempt++) {
-    try {
-      const resp = await chrome.tabs.sendMessage(tab.id, {
-        type: 'WR_FILL_QUESTION',
-        slug,
-        question: text,
-        autoSend,
-      });
-      if (resp?.ok) return { tabId: tab.id, filled: true, sent: !!resp.sent };
-    } catch {
-      /* content script not ready yet */
-    }
-    await sleep(700);
-  }
-  return { tabId: tab.id, filled: false, sent: false };
-}
-
-async function closeTab(tabId) {
-  if (tabId == null) return;
-  try {
-    await chrome.tabs.remove(tabId);
-  } catch {
-    /* already gone */
-  }
-}
-
 /** Errors that mean every further project would fail the same way. */
 function isFatalOpenAIError(msg) {
-  return /OpenAI (401|403)\b|insufficient_quota|invalid_api_key|billing_not_active|No OpenAI API key/i.test(msg);
+  return /OpenAI (401|403|404)\b|insufficient_quota|invalid_api_key|billing_not_active|model_not_found|does not exist or you do not have access|Unsupported (parameter|value)|No OpenAI API key/i.test(msg);
 }
 
 /** A database row, shaped the way generateQuestion() expects a project. */
@@ -284,6 +160,13 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
         }
         log(`Bid sent: ${job.title}`, 'ok');
         await appendLog({ type: 'bid', slug, title: job.title });
+        try {
+          if (await scheduleFollowUp(cfg, { slug, title: job.title })) {
+            log(`Follow-up queued in ${cfg.followUpHours} h: ${job.title}`, 'info');
+          }
+        } catch (err) {
+          log(`Could not queue the follow-up for ${job.title}: ${err.message}`, 'warn');
+        }
         stats();
       } else {
         skip.push(slug);

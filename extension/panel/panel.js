@@ -1,10 +1,14 @@
-import { loadSettings, saveSettings } from '../lib/storage.js';
+import { loadSettings, saveSettings, getFollowUps, FOLLOWUP_KEY } from '../lib/storage.js';
 import { DEFAULT_PROMPT } from '../lib/default-prompt.js';
 
 const $ = (id) => document.getElementById(id);
 
-const TEXT_FIELDS = ['bidderRole', 'openaiApiKey', 'supabaseUrl', 'supabaseKey', 'model', 'portfolioUrl'];
-const NUMBER_FIELDS = ['secondDelayMin', 'genDelayMinSec', 'genDelayMaxSec', 'gapDelayMinSec', 'gapDelayMaxSec', 'sendWaitSec'];
+const TEXT_FIELDS = ['bidderRole', 'openaiApiKey', 'supabaseUrl', 'supabaseKey', 'model', 'portfolioUrl', 'followUpMessage'];
+const NUMBER_FIELDS = ['secondDelayMin', 'followUpHours', 'genDelayMinSec', 'genDelayMaxSec', 'gapDelayMinSec', 'gapDelayMaxSec', 'sendWaitSec'];
+
+/** Whether `n` is acceptable for a field: the second bidder's wait may be 0 (= no wait), the follow-up delay is any positive number of hours, the rest at least 1. */
+const validNumber = (id, n) =>
+  Number.isFinite(n) && (id === 'secondDelayMin' ? n >= 0 : id === 'followUpHours' ? n > 0 : n >= 1);
 
 // ---------------------------------------------------------------------------
 // Settings
@@ -35,8 +39,7 @@ function readForm() {
   for (const id of TEXT_FIELDS) patch[id] = $(id).value.trim();
   for (const id of NUMBER_FIELDS) {
     const n = Number($(id).value);
-    // The second bidder's wait may be 0 (= no wait); every other number must be positive.
-    if (Number.isFinite(n) && n >= (id === 'secondDelayMin' ? 0 : 1)) patch[id] = n;
+    if (validNumber(id, n)) patch[id] = n;
   }
   patch.autoSend = $('autoSend').checked;
   // Leaving the prompt as the built-in one stores nothing, so a later update to
@@ -68,6 +71,39 @@ $('reset-prompt').addEventListener('click', () => {
   $('prompt').value = DEFAULT_PROMPT;
   promptNote();
   scheduleSave();
+});
+
+// ---------------------------------------------------------------------------
+// Follow-ups waiting to go out (read straight from storage; the worker owns them)
+// ---------------------------------------------------------------------------
+function formatIn(ms) {
+  const min = Math.ceil(ms / 60000);
+  if (min <= 1) return 'under a minute';
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`;
+}
+
+async function renderFollowUps() {
+  const list = await getFollowUps();
+  $('cancel-followups').disabled = !list.length;
+  if (!list.length) {
+    $('followup-note').textContent = 'None waiting.';
+    return;
+  }
+  const next = Math.min(...list.map((f) => Math.max(f.dueAt, f.retryAt)));
+  const wait = next - Date.now();
+  $('followup-note').textContent =
+    `${list.length} waiting — next ${wait > 0 ? `in ${formatIn(wait)}` : 'due now'}`;
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes[FOLLOWUP_KEY]) renderFollowUps();
+});
+setInterval(renderFollowUps, 30000);
+$('cancel-followups').addEventListener('click', async () => {
+  const n = (await getFollowUps()).length;
+  if (n && confirm(`Cancel ${n} pending follow-up${n === 1 ? '' : 's'}? They will not be sent.`)) {
+    sendCommand({ type: 'CANCEL_FOLLOWUPS' });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -158,3 +194,4 @@ $('stop').addEventListener('click', () => sendCommand({ type: 'STOP' }));
 
 connect();
 fillForm();
+renderFollowUps();

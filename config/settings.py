@@ -87,7 +87,7 @@ LOG_FILE = BASE_DIR / 'scraper.log'
 
 # OpenAI API — used only by the AI category filter (yes/no triage of each new job)
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '').strip()
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini').strip()
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-6-luna').strip()
 
 # Capture from now on — the first scrape records what is already listed on
 # Workana as the starting point and stores none of it; only projects posted

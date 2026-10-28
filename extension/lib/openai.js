@@ -35,19 +35,35 @@ export function stripNameFromGreeting(text) {
 }
 
 /**
- * Normalize whitespace to the house format: one line break between blocks,
- * never a blank line.
- *
- * Models reach for blank-line paragraph spacing no matter how firmly the prompt
- * says otherwise, so the rule is enforced here rather than hoped for.
+ * Tidy whitespace without flattening the layout: paragraphs stay separated by a
+ * single blank line (never more), trailing spaces and runs of spaces go.
  */
 export function normalizeMessageText(text) {
   return (text || '')
     .replace(/\r\n/g, '\n')
     .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n\s*\n+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
+}
+
+/**
+ * Sampling parameters for the model.
+ *
+ * GPT-4 and older chat models take temperature, the two penalties and
+ * max_tokens. Newer reasoning models (gpt-5/6…) reject all four with HTTP 400,
+ * and spend part of the token budget on hidden reasoning: at the default effort
+ * a small cap is used up by reasoning alone and the reply comes back empty.
+ * So they get max_completion_tokens with room to spare and a low effort.
+ */
+const LEGACY_MODEL_RE = /^(?:ft:)?gpt-(?:3\.5|4)/i;
+export function samplingParams(model) {
+  if (LEGACY_MODEL_RE.test(model || '')) {
+    // Higher temperature + presence_penalty push it off the one phrasing it
+    // would otherwise settle into for every project.
+    return { temperature: 0.9, presence_penalty: 0.4, frequency_penalty: 0.3, max_tokens: 1200 };
+  }
+  return { reasoning_effort: 'low', max_completion_tokens: 3000 };
 }
 
 /**
@@ -63,13 +79,12 @@ export async function generateQuestion({ apiKey, model, systemPrompt, portfolioU
       'not use one. Open with a neutral greeting and never address them by name, ' +
       'initial, or company — even if a name appears in the description below.',
     `Project title: ${project.title}`,
-    `Budget: ${project.budget}`,
     `Country: ${project.country}`,
     `Skills: ${(project.skills || []).join(', ')}`,
     portfolioUrl
       ? `Portfolio link you may reference at most once, only if it fits naturally: ${portfolioUrl}`
       : 'No portfolio link provided — do not invent or mention one.',
-    'IMPORTANT: never reveal, invent, or sign your own name. Never mention price or budget.',
+    'IMPORTANT: never reveal, invent, or sign your own name.',
     '',
     'Description:',
     project.description,
@@ -89,12 +104,7 @@ export async function generateQuestion({ apiKey, model, systemPrompt, portfolioU
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userContent },
         ],
-        // Higher temperature + presence_penalty push it off the one phrasing it
-        // would otherwise settle into for every project.
-        temperature: 0.9,
-        presence_penalty: 0.4,
-        frequency_penalty: 0.3,
-        max_tokens: 600,
+        ...samplingParams(model),
       }),
     });
   } catch (e) {
@@ -107,7 +117,14 @@ export async function generateQuestion({ apiKey, model, systemPrompt, portfolioU
   }
 
   const data = await res.json();
-  const raw = normalizeMessageText(data.choices?.[0]?.message?.content?.trim());
-  if (!raw) throw new Error('Empty response from OpenAI');
+  const choice = data.choices?.[0];
+  const raw = normalizeMessageText(choice?.message?.content?.trim());
+  if (!raw) {
+    throw new Error(
+      choice?.finish_reason === 'length'
+        ? 'OpenAI used its whole token budget before writing the reply'
+        : 'Empty response from OpenAI',
+    );
+  }
   return stripNameFromGreeting(raw);
 }

@@ -1,7 +1,7 @@
 /**
  * Workana Radar bid bot — background worker.
  *
- * Owns two things:
+ * Owns three things:
  *  1. The side panel: Chrome's native side panel (panel/panel.html), opened from
  *     the toolbar icon. Chrome itself narrows the Workana page to make room, so
  *     the site's layout adapts instead of being covered.
@@ -9,8 +9,12 @@
  *     independent of the panel, so closing the panel or reloading the page
  *     doesn't interrupt it. The panel connects over a port, receives state
  *     snapshots, and sends START/STOP.
+ *  3. The follow-ups: a timer wakes this worker every minute and sends the ones
+ *     that are due, whether or not bidding is started.
  */
-import { runBidQueue, noteQuestionSent } from './lib/bid-queue.js';
+import { runBidQueue } from './lib/bid-queue.js';
+import { noteQuestionSent } from './lib/tab-send.js';
+import { sendDueFollowUps, cancelFollowUps } from './lib/followups.js';
 import { getRunSettings } from './lib/storage.js';
 
 const MAX_LOG = 60;
@@ -94,6 +98,9 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onMessage.addListener((msg) => {
     if (msg?.type === 'START') startRun();
     else if (msg?.type === 'STOP') stopRun();
+    else if (msg?.type === 'CANCEL_FOLLOWUPS') {
+      cancelFollowUps().then((n) => log(`Cancelled ${n} pending follow-up${n === 1 ? '' : 's'}.`, 'info'));
+    }
   });
   port.onDisconnect.addListener(() => ports.delete(port));
 });
@@ -104,6 +111,26 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
   .catch((err) => console.warn('[BidBot] side panel setup failed', err));
+
+// ---------------------------------------------------------------------------
+// Follow-up timer
+// ---------------------------------------------------------------------------
+const FOLLOWUP_ALARM = 'followups';
+
+// Chrome may drop alarms when the browser restarts, so make sure it exists every
+// time the worker starts. (create() would reset an existing one, so check first.)
+function ensureFollowUpAlarm() {
+  chrome.alarms
+    .get(FOLLOWUP_ALARM)
+    .then((alarm) => alarm || chrome.alarms.create(FOLLOWUP_ALARM, { delayInMinutes: 1, periodInMinutes: 1 }))
+    .catch((err) => console.warn('[BidBot] follow-up timer setup failed', err));
+}
+ensureFollowUpAlarm();
+chrome.runtime.onStartup.addListener(ensureFollowUpAlarm);
+chrome.runtime.onInstalled.addListener(ensureFollowUpAlarm);
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === FOLLOWUP_ALARM) sendDueFollowUps({ log });
+});
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === 'WR_QUESTION_SENT' && msg.slug) {

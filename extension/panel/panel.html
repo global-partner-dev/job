@@ -65,6 +65,21 @@
       </div>
     </section>
 
+    <section>
+      <h2>Follow-up</h2>
+      <label>Send it this many hours after each bid
+        <input id="followUpHours" type="number" min="0" step="any" />
+      </label>
+      <label>Follow-up message
+        <textarea id="followUpMessage" rows="5" spellcheck="false" placeholder="Hi! I wanted to follow up on my proposal…"></textarea>
+      </label>
+      <div class="row">
+        <span id="followup-note" class="hint"></span>
+        <button id="cancel-followups" type="button" disabled>Cancel pending</button>
+      </div>
+      <p class="hint">Leave the message empty to turn follow-ups off. They go out from this browser's Workana account while Chrome is open, even when bidding is stopped. The message is fixed when the bid is sent.</p>
+    </section>
+
     <details>
       <summary>More settings</summary>
       <label>Model

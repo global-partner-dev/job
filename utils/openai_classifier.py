@@ -35,9 +35,9 @@ class OpenAIClassifier:
         "does not exist or you do not have access",
     )
 
-    def __init__(self, api_key: str = None, model: str = "gpt-4o-mini"):
+    def __init__(self, api_key: str = None, model: str = "gpt-6-luna"):
         self.api_key = (api_key or "").strip()
-        self.model = (model or "gpt-4o-mini").strip()
+        self.model = (model or "gpt-6-luna").strip()
         self._available = bool(self.api_key)
         # Set to a human-readable reason once a non-recoverable API error is
         # seen, so the caller can stop instead of silently discarding every job.

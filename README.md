@@ -64,7 +64,7 @@ cp .env.template .env
 #     SUPABASE_URL=...              (Project URL)
 #     SUPABASE_SERVICE_KEY=...      (secret key)
 #     OPENAI_API_KEY=...            (optional — AI category filter only)
-#     OPENAI_MODEL=gpt-4o-mini
+#     OPENAI_MODEL=gpt-6-luna
 
 # Run (xvfb-run gives Chrome the display it needs)
 xvfb-run -a python main.py
@@ -157,7 +157,7 @@ flag: `bidded` (first) and `bidded_second` (second). Use a different Workana acc
 **What "Start bidding" does**, one project at a time:
 
 1. Ask Supabase for the newest project this bidder hasn't bid on (and that is old enough for them).
-2. Write the proposal with OpenAI (no names, no price, one closing question).
+2. Write the proposal with OpenAI: a concrete plan for how the work would be done, a price in USD and a deadline (worked out from the scope, not from Workana's listed budget), and no names.
 3. Open the project's Workana message page in a background tab, fill the form, press Send
    (or, with auto-send off, wait for your click).
 4. Set this bidder's flag (`bidded`, or `bidded_second` for the second bidder) to `1`, then move on. When the queue is empty it checks again
@@ -169,6 +169,18 @@ whole run instead of burning through the queue. Sent slugs are also remembered l
 failed database update can never cause a second proposal to the same project.
 
 The run lives in the background worker, so reloading the Workana page doesn't interrupt it.
+
+**Follow-up message.** Fill in **Follow-up** in the panel — a number of hours and a message —
+and every bid that goes out gets a second message into the same conversation that many hours
+later (fractions work: `0.5` = 30 minutes). An empty message turns it off.
+
+- It is stored in this browser, so each bidder follows up from their own Workana account.
+- The message is captured when the bid is sent; editing the field afterwards only affects
+  later bids. **Cancel pending** in the panel drops everything still waiting.
+- A one-minute timer sends whatever is due, **even when bidding is stopped**, as long as
+  Chrome is open. If Chrome was closed at the due time it goes out on the next start.
+- If the message box can't be found it tries again 10 minutes later, up to 3 times, then
+  gives up and logs it. It does not check whether the client has already replied.
 
 ---
 
@@ -186,12 +198,14 @@ The run lives in the background worker, so reloading the Workana page doesn't in
 ├── utils/                      # AI category filter
 ├── supabase/*.sql              # run in Supabase, in filename order
 └── extension/                  # Chrome extension (load unpacked)
-    ├── background.js           # opens the side panel + runs the bid queue
+    ├── background.js           # opens the side panel, runs the bid queue, ticks the follow-up timer
     ├── content/workana-question.js  # fills Workana's form, detects Send
-    ├── panel/                  # side panel UI (bidder role, keys, prompt, status, log)
+    ├── panel/                  # side panel UI (bidder role, keys, prompt, follow-up, status, log)
     └── lib/
         ├── bid-queue.js        # fetch → write → send → mark bidded
+        ├── followups.js        # queue + send the follow-up message after each bid
+        ├── tab-send.js         # open the message page, fill it, detect Send (bids + follow-ups)
         ├── supabase-jobs.js    # queue RPC calls
         ├── default-prompt.js   # the built-in prompt
-        └── openai.js, storage.js, workana.js, parse.js, cookies.js
+        └── openai.js, storage.js, timing.js, workana.js, parse.js, cookies.js
 ```
