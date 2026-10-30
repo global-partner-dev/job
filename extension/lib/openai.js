@@ -101,6 +101,33 @@ export function formatHandGreeting(text, firstName) {
   return greeting + (newlineAt === -1 ? '' : text.slice(newlineAt));
 }
 
+const BUDGET_HEAD_RE = /^((?:Orçamento|Presupuesto|Budget)\s*:\s*\$\s?)([\d.,]+)/i;
+const BUDGET_ITEM_RE = /^- .*:\s*\$\s?([\d.,]+)\s*$/;
+const parseAmount = (s) => Number(s.replace(/[.,](?=\d{3}\b)/g, ''));
+
+/**
+ * An itemised budget ("Orçamento: $ 1,400 …" then "- item: $ 200" lines) whose
+ * lines don't add up to the total gets the total set to their sum. A client
+ * checks that sum. Text without such a block is returned unchanged.
+ */
+export function settleBudgetTotal(text) {
+  const lines = text.split('\n');
+  const head = lines.findIndex((l) => BUDGET_HEAD_RE.test(l));
+  if (head === -1) return text;
+  let sum = 0;
+  let items = 0;
+  for (let i = head + 1; i < lines.length; i++) {
+    const m = lines[i].match(BUDGET_ITEM_RE);
+    if (!m) break;
+    sum += parseAmount(m[1]);
+    items++;
+  }
+  const [, label, total] = lines[head].match(BUDGET_HEAD_RE);
+  if (!items || !Number.isFinite(sum) || sum === parseAmount(total)) return text;
+  lines[head] = lines[head].replace(BUDGET_HEAD_RE, `${label}${sum.toLocaleString('en-US')}`);
+  return lines.join('\n');
+}
+
 /**
  * Tidy whitespace without flattening the layout: paragraphs stay separated by a
  * single blank line (never more), trailing spaces and runs of spaces go.
@@ -224,5 +251,5 @@ export async function generateQuestion({ apiKey, model, systemPrompt, portfolioU
       ],
     }),
   );
-  return greetByName ? formatHandGreeting(raw, firstName) : stripNameFromGreeting(raw);
+  return settleBudgetTotal(greetByName ? formatHandGreeting(raw, firstName) : stripNameFromGreeting(raw));
 }

@@ -180,7 +180,9 @@ tried again 15 minutes later rather than judged on the preview.
 ("𝗢𝗹𝗮́ 𝗕𝗿𝘂𝗻𝗼 🖐", or no name when Workana only shows initials), one paragraph on the business
 logic the project depends on, "Este é meu enfoque." with numbered points ending in the stack,
 an itemised fixed-price budget whose lines add up to the total, and when it can start plus the
-total timeline. The first bidder keeps its shorter plan-led message and never uses a name.
+total timeline. Its prices are pegged to the sample bid ($1,400 for an 8-part system in 5–6
+weeks): about $300–700 for a small project, $700–1,400 for a typical system, never above
+$2,000. The first bidder keeps its shorter plan-led message and never uses a name.
 
 **What "Start bidding" does**, one project at a time:
 
