@@ -36,13 +36,13 @@
           <input type="radio" name="bidderRole" value="first" /> <span><b>First bidder</b> — bids right away</span>
         </label>
         <label class="check">
-          <input type="radio" name="bidderRole" value="second" /> <span><b>Second bidder</b> — waits before bidding</span>
+          <input type="radio" name="bidderRole" value="second" /> <span><b>Second bidder</b> — waits, then bids only on projects that pass its check</span>
         </label>
       </fieldset>
       <label id="delay-row">Wait after a project is stored (minutes)
         <input id="secondDelayMin" type="number" min="0" />
       </label>
-      <p class="hint">Both bidders bid on every project. Only one person per role.</p>
+      <p class="hint">The first bidder bids on every project; the second skips vague briefs, briefs written by Workana’s assistant, and projects outside its types (MVPs, management systems, CRM/ERP, process automation). Only one person per role.</p>
     </section>
 
     <section>

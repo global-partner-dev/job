@@ -1,13 +1,16 @@
 import { fetchProjectDetails, projectPageUrl } from './workana.js';
 import { generateQuestion } from './openai.js';
-import { fetchNextJob, markJobBidded, SupabaseConfigError } from './supabase-jobs.js';
+import { fetchNextJob, markJobBidded, markJobSkipped, SupabaseConfigError } from './supabase-jobs.js';
 import { getSentSlugs, markSlugSent, appendLog } from './storage.js';
 import { sleep, keepAliveSleep, randMs } from './timing.js';
 import { openAndFill, waitForSend, closeTab } from './tab-send.js';
 import { scheduleFollowUp } from './followups.js';
+import { CATEGORIES, isPreviewText, looksWorkanaWritten, screenProject } from './project-check.js';
 
 /** How long to wait before looking again once the queue is empty. */
 const EMPTY_POLL_MS = 30000;
+/** The second bidder's wait before re-reading a project whose full brief it couldn't load. */
+const FULL_TEXT_RETRY_MS = 15 * 60 * 1000;
 
 /** Errors that mean every further project would fail the same way. */
 function isFatalOpenAIError(msg) {
@@ -23,6 +26,7 @@ function toProject(row) {
     budget: row.budget || '',
     country: row.client_country || '',
     skills: Array.isArray(row.skills) ? row.skills : [],
+    clientName: row.client_name || '',
   };
 }
 
@@ -39,6 +43,12 @@ function toProject(row) {
  */
 export async function runBidQueue(cfg, { update, log, isStopped }) {
   const skip = []; // ids that failed / were not sent during this run
+  // Second bidder: ids whose full brief couldn't be loaded, and when to try again.
+  const retryAt = new Map();
+  const skipNow = () => {
+    for (const [id, at] of retryAt) if (at <= Date.now()) retryAt.delete(id);
+    return [...skip, ...retryAt.keys()];
+  };
   const sentBefore = await getSentSlugs();
   // First bidder keeps the bare slug (as before); the second is namespaced so
   // switching roles in one browser never makes it skip projects it hasn't sent.
@@ -53,7 +63,7 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
     // ---- 1. next project from the database --------------------------------
     let row;
     try {
-      row = await fetchNextJob(cfg, skip);
+      row = await fetchNextJob(cfg, skipNow());
     } catch (err) {
       if (err instanceof SupabaseConfigError) throw err;
       log(`Could not read the queue: ${err.message}`, 'warn');
@@ -94,17 +104,56 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
 
     try {
       // ---- 2. top up a thin row from the detail page ----------------------
+      // The scraper often only gets the listing preview (~350 chars), so read
+      // the full brief from Workana in this (logged-in) browser.
       let project = toProject(row);
-      if (project.description.length < 40 || row.ai_category === 'unjudged_truncated') {
+      let fullText = row.ai_category !== 'unjudged_truncated' && !isPreviewText(project.description);
+      let pageError = '';
+      if (!fullText) {
         try {
           const details = await fetchProjectDetails(slug);
           for (const [k, v] of Object.entries(details || {})) {
             const empty = v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length);
             if (!empty) project[k] = v;
           }
-        } catch {
-          /* fall back to what the database has */
+          if (details?.description) fullText = true;
+          else pageError = 'no description found on the project page';
+        } catch (err) {
+          pageError = err?.message || String(err); // the first bidder falls back to the database text
         }
+      }
+
+      // ---- 2b. second bidder: only bid where it is worth it ----------------
+      if (cfg.slot === 2) {
+        update({ phase: 'preparing', message: 'Checking the project…' });
+        let verdict = null;
+        if (looksWorkanaWritten(project.description)) {
+          verdict = { bid: false, reason: 'written by Workana’s assistant ("The client is looking for…")' };
+        } else if (fullText) {
+          verdict = await screenProject({ apiKey: cfg.openaiApiKey, model: cfg.model, project });
+        }
+
+        if (!verdict) {
+          // A preview can't show whether the scope is clear: try again later.
+          retryAt.set(slug, Date.now() + FULL_TEXT_RETRY_MS);
+          log(`${job.title}: could not read the full brief (${pageError}) — trying again in 15 min`, 'warn');
+          await keepAliveSleep(randMs(2, 5), isStopped);
+          continue;
+        }
+        if (!verdict.bid) {
+          skip.push(slug);
+          try {
+            await markJobSkipped(cfg, slug, verdict.reason);
+          } catch (err) {
+            if (err instanceof SupabaseConfigError) throw err;
+            log(`Could not mark ${slug} as skipped: ${err.message}`, 'warn');
+          }
+          log(`Skipped: ${job.title} — ${verdict.reason}`, 'info');
+          await appendLog({ type: 'skip', slug, title: job.title, reason: verdict.reason });
+          await keepAliveSleep(randMs(2, 5), isStopped);
+          continue;
+        }
+        log(`Worth a bid (${CATEGORIES[verdict.category]}): ${job.title}`, 'info');
       }
 
       // ---- 3. write the proposal -----------------------------------------
@@ -115,6 +164,7 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
         systemPrompt: cfg.systemPrompt,
         portfolioUrl: cfg.portfolioUrl,
         project,
+        greetByName: cfg.slot === 2,
       });
 
       update({ phase: 'waiting', message: 'Opening in a moment…' });

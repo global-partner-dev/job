@@ -8,6 +8,8 @@
  *       → newest project this slot has not bid on that is at least
  *         p_delay_minutes old
  *   mark_job_bidded(p_job_id, p_slot)  → sets bidded (slot 1) / bidded_second (slot 2)
+ * and, for the second bidder's project filter (08_second_bidder_filter.sql):
+ *   skip_job_second(p_job_id, p_reason) → sets bidded_second = 2 with the reason
  */
 
 /** An error that will not fix itself on retry (bad key, function missing). */
@@ -40,7 +42,7 @@ async function rpc(cfg, fn, args) {
   const body = (await res.text()).slice(0, 200);
   if (res.status === 404 || /PGRST202/.test(body)) {
     throw new SupabaseConfigError(
-      `Function ${fn} not found — run supabase/06_bidded.sql and 07_two_bidders.sql in the Supabase SQL Editor.`,
+      `Function ${fn} not found — run supabase/06_bidded.sql, 07_two_bidders.sql and 08_second_bidder_filter.sql in the Supabase SQL Editor.`,
     );
   }
   if (res.status === 401 || res.status === 403) {
@@ -67,4 +69,12 @@ export async function fetchNextJob(cfg, skip = []) {
 /** Set this bidder's flag to 1. @returns {Promise<boolean>} whether a row was updated */
 export async function markJobBidded(cfg, jobId) {
   return (await rpc(cfg, 'mark_job_bidded', { p_job_id: jobId, p_slot: cfg.slot })) === true;
+}
+
+/**
+ * Take a project out of the second bidder's queue for good (bidded_second = 2).
+ * @returns {Promise<boolean>} whether a waiting row was updated
+ */
+export async function markJobSkipped(cfg, jobId, reason) {
+  return (await rpc(cfg, 'skip_job_second', { p_job_id: jobId, p_reason: reason || null })) === true;
 }

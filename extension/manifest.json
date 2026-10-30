@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Workana Radar Bid Bot",
-  "version": "4.1.0",
+  "version": "4.2.0",
   "description": "Takes projects one by one from your Supabase database, writes a proposal with OpenAI, sends it on Workana, and marks the project bidded. Opens in Chrome's side panel next to the Workana page.",
   "permissions": [
     "storage",

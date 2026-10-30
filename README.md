@@ -24,11 +24,14 @@ Workana ──► Python scraper (VPS) ──► Supabase (Postgres) ◄── C
 1. Create a project at [supabase.com](https://supabase.com).
 2. Open **SQL Editor → New query** and run the files in [`supabase/`](supabase/) **in order**:
    `schema.sql`, `02_auth_multiuser.sql`, `03_cleanup.sql`, `04_ask_questions.sql`,
-   `05_drop_ai_summary.sql`, **`06_bidded.sql`**, and **`07_two_bidders.sql`**. Each file is idempotent.
+   `05_drop_ai_summary.sql`, **`06_bidded.sql`**, **`07_two_bidders.sql`** and
+   **`08_second_bidder_filter.sql`**. Each file is idempotent.
    `06_bidded.sql` adds `jobs.bidded` (`0` = not bid on yet, `1` = bid sent) and the two
    functions the extension calls; `07_two_bidders.sql` adds `jobs.bidded_second` and makes
-   those functions bidder-aware. The extension's publishable key gets **no table access** —
-   only `next_unbidded_job()` and `mark_job_bidded()`.
+   those functions bidder-aware; `08_second_bidder_filter.sql` lets the second bidder mark a
+   project it passes on (`bidded_second = 2`, reason in `second_skip_reason`). The extension's
+   publishable key gets **no table access** — only `next_unbidded_job()`, `mark_job_bidded()`
+   and `skip_job_second()`.
 3. From **Settings → API Keys**, grab:
    - **Project URL** — scraper and extension.
    - **Secret key** (legacy: `service_role`) — **scraper only**, in `.env`. Bypasses RLS.
@@ -149,18 +152,47 @@ side panel's own close button, to hide it. Needs Chrome 114 or newer.
 | More settings             | model, portfolio link, random delays, auto-send on/off          |
 
 **Two bidders.** Up to two people run the extension, each in their own browser and Workana
-account, and **both bid on every project**. The first bidder bids as soon as a project is
-stored; the second bids once it has been stored for the chosen number of minutes (counted from
-when the scraper saved it, so it works even if the first bidder is offline). Each has their own
-flag: `bidded` (first) and `bidded_second` (second). Use a different Workana account for each.
+account. The **first bidder bids on every project** as soon as it is stored. The **second bidder
+is selective**: once a project has been stored for the chosen number of minutes (counted from
+when the scraper saved it, so it works even if the first bidder is offline), it reads the full
+brief and only bids when the project passes its check. Each has their own flag: `bidded`
+(first) and `bidded_second` (second). Use a different Workana account for each.
+
+**The second bidder's check** (the budget plays no part in it). It passes on a project when:
+
+- the brief was written by **Workana's assistant** rather than the client — briefs that open
+  like "The client is looking for…", "O cliente busca…", "El cliente busca…" are caught by
+  their opening, other assistant-style briefs by OpenAI;
+- the **scope is too vague** to estimate (e.g. "We need to migrate an existing system… PHP
+  experience required": migrate what, how big, for whom?);
+- it is **not one of its project types**: an MVP of a specific concept (PWA, mobile app, web
+  app), an internal management system, a CRM/ERP, or business process automation (simple
+  WhatsApp bots/auto-replies don't count).
+
+A project it passes on gets `bidded_second = 2` and the reason in `second_skip_reason`, and the
+log shows "Skipped: …". To give one back to the queue:
+`update jobs set bidded_second = 0, second_skip_reason = null where id = '…';`
+When the scraper only stored the listing preview, the second bidder reads the full brief from
+the project page in its own (logged-in) browser; if that page can't be read, the project is
+tried again 15 minutes later rather than judged on the preview.
+
+**The second bidder's proposal format**: a bold greeting with the client's first name and 🖐
+("𝗢𝗹𝗮́ 𝗕𝗿𝘂𝗻𝗼 🖐", or no name when Workana only shows initials), one paragraph on the business
+logic the project depends on, "Este é meu enfoque." with numbered points ending in the stack,
+an itemised fixed-price budget whose lines add up to the total, and when it can start plus the
+total timeline. The first bidder keeps its shorter plan-led message and never uses a name.
 
 **What "Start bidding" does**, one project at a time:
 
 1. Ask Supabase for the newest project this bidder hasn't bid on (and that is old enough for them).
-2. Write the proposal with OpenAI: a concrete plan for how the work would be done, a price in USD and a deadline (worked out from the scope, not from Workana's listed budget), and no names.
-3. Open the project's Workana message page in a background tab, fill the form, press Send
+2. If the database only has the listing preview, read the full brief from the project page.
+   **Second bidder only:** run the check above and skip the project if it doesn't pass.
+3. Write the proposal with OpenAI, in the language of the brief: a concrete plan for how the
+   work would be done, a price in USD and a deadline (worked out from the scope, not from
+   Workana's listed budget).
+4. Open the project's Workana message page in a background tab, fill the form, press Send
    (or, with auto-send off, wait for your click).
-4. Set this bidder's flag (`bidded`, or `bidded_second` for the second bidder) to `1`, then move on. When the queue is empty it checks again
+5. Set this bidder's flag (`bidded`, or `bidded_second` for the second bidder) to `1`, then move on. When the queue is empty it checks again
    every 30 seconds until you press **Stop**.
 
 A project that fails (OpenAI error, Send not found, tab closed) is **left unmarked** and
@@ -206,6 +238,7 @@ later (fractions work: `0.5` = 30 minutes). An empty message turns it off.
         ├── followups.js        # queue + send the follow-up message after each bid
         ├── tab-send.js         # open the message page, fill it, detect Send (bids + follow-ups)
         ├── supabase-jobs.js    # queue RPC calls
-        ├── default-prompt.js   # the built-in prompt
+        ├── default-prompt.js   # the built-in prompts (first + second bidder)
+        ├── project-check.js    # the second bidder's check before it bids
         └── openai.js, storage.js, timing.js, workana.js, parse.js, cookies.js
 ```
