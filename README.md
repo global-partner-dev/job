@@ -161,8 +161,8 @@ brief and only bids when the project passes its check. Each has their own flag: 
 **The second bidder's check** (the budget plays no part in it). It passes on a project when:
 
 - the brief was written by **Workana's assistant** rather than the client — briefs that open
-  like "The client is looking for…", "O cliente busca…", "El cliente busca…" are caught by
-  their opening, other assistant-style briefs by OpenAI;
+  like "The client is looking for…", "O cliente busca…", "El cliente busca…" (judged by
+  that opening only; a merely polished brief is fine);
 - the **scope is too vague** to estimate (e.g. "We need to migrate an existing system… PHP
   experience required": migrate what, how big, for whom?);
 - it is **not one of its project types**: an MVP of a specific concept (PWA, mobile app, web
