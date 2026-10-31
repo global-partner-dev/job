@@ -124,6 +124,18 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
       }
 
       // ---- 2b. second bidder: only bid where it is worth it ----------------
+      const skipProject = async (reason) => {
+        skip.push(slug);
+        try {
+          await markJobSkipped(cfg, slug, reason);
+        } catch (err) {
+          if (err instanceof SupabaseConfigError) throw err;
+          log(`Could not mark ${slug} as skipped: ${err.message}`, 'warn');
+        }
+        log(`Skipped: ${job.title} — ${reason}`, 'info');
+        await appendLog({ type: 'skip', slug, title: job.title, reason });
+        await keepAliveSleep(randMs(2, 5), isStopped);
+      };
       if (cfg.slot === 2) {
         update({ phase: 'preparing', message: 'Checking the project…' });
         let verdict = null;
@@ -141,16 +153,7 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
           continue;
         }
         if (!verdict.bid) {
-          skip.push(slug);
-          try {
-            await markJobSkipped(cfg, slug, verdict.reason);
-          } catch (err) {
-            if (err instanceof SupabaseConfigError) throw err;
-            log(`Could not mark ${slug} as skipped: ${err.message}`, 'warn');
-          }
-          log(`Skipped: ${job.title} — ${verdict.reason}`, 'info');
-          await appendLog({ type: 'skip', slug, title: job.title, reason: verdict.reason });
-          await keepAliveSleep(randMs(2, 5), isStopped);
+          await skipProject(verdict.reason);
           continue;
         }
         log(`Worth a bid (${CATEGORIES[verdict.category]}): ${job.title}`, 'info');
@@ -166,6 +169,20 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
         project,
         greetByName: cfg.slot === 2,
       });
+      // The second bidder's prompt answers "SKIP: <reason>" when the brief
+      // demands something it can't honestly offer (its own published app…).
+      const declined = text.match(/^\s*SKIP:\s*(.*)/i);
+      if (declined) {
+        const reason = `requires something we don’t have: ${declined[1].trim().slice(0, 250)}`;
+        if (cfg.slot === 2) {
+          await skipProject(reason);
+        } else {
+          // The first bidder has no skip state; never send the SKIP line itself.
+          skip.push(slug);
+          log(`Not sent (left at bidded = 0): ${job.title} — ${reason}`, 'warn');
+        }
+        continue;
+      }
 
       update({ phase: 'waiting', message: 'Opening in a moment…' });
       await keepAliveSleep(randMs(cfg.genDelayMinSec, cfg.genDelayMaxSec), isStopped);

@@ -163,6 +163,11 @@ brief and only bids when the project passes its check. Each has their own flag: 
 - the brief was written by **Workana's assistant** rather than the client — briefs that open
   like "The client is looking for…", "O cliente busca…", "El cliente busca…" (judged by
   that opening only; a merely polished brief is fine);
+- the client **requires something we must already have**: our own app already on Google Play,
+  a ready-made product or code base to adapt, rent or resell ("no development from scratch",
+  "send your APK first"), a registered company, presence on site. The proposal writer also
+  answers `SKIP: <reason>` instead of a bid if it finds such a condition, so a proposal never
+  admits to missing a requirement;
 - the **scope is too vague** to estimate (e.g. "We need to migrate an existing system… PHP
   experience required": migrate what, how big, for whom?);
 - it is **not one of its project types**: an MVP of a specific concept (PWA, mobile app, web
