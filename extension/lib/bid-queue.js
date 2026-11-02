@@ -17,6 +17,16 @@ function isFatalOpenAIError(msg) {
   return /OpenAI (401|403|404)\b|insufficient_quota|invalid_api_key|billing_not_active|model_not_found|does not exist or you do not have access|Unsupported (parameter|value)|No OpenAI API key/i.test(msg);
 }
 
+/**
+ * When a project went up (ms), or null: the earlier of the posted time read
+ * from the listing and the time the scraper first saw it. The second covers a
+ * scraper that was down and only found the project later.
+ */
+function postedAt(row) {
+  const times = [row.posted_date_timestamp, row.first_seen_at].map((t) => Date.parse(t)).filter(Number.isFinite);
+  return times.length ? Math.min(...times) : null;
+}
+
 /** A database row, shaped the way generateQuestion() expects a project. */
 function toProject(row) {
   return {
@@ -56,6 +66,7 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
   const sendWaitMs = Math.max(30, Number(cfg.sendWaitSec) || 300) * 1000;
   let sent = 0;
   let failed = 0;
+  let tooOld = 0; // passed over since the queue was last empty
 
   const stats = () => update({ sent, failed });
 
@@ -73,6 +84,10 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
     }
 
     if (!row) {
+      if (tooOld) {
+        log(`Passed over ${tooOld} project${tooOld === 1 ? '' : 's'} older than ${cfg.maxAgeMin / 60} h`, 'info');
+        tooOld = 0;
+      }
       update({
         phase: 'waiting',
         current: null,
@@ -86,6 +101,15 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
     }
 
     const slug = row.id;
+    // Too old to be worth a bid: leave it for the rest of this run. Its flag
+    // stays 0, so raising the limit later brings it back.
+    const at = postedAt(row);
+    if (cfg.maxAgeMin > 0 && at !== null && Date.now() - at > cfg.maxAgeMin * 60000) {
+      skip.push(slug);
+      tooOld++;
+      continue;
+    }
+
     const job = { id: slug, title: row.title || slug, url: projectPageUrl(slug) };
     update({ current: job, phase: 'preparing', message: 'Reading the project…' });
 

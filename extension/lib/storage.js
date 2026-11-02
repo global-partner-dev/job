@@ -29,6 +29,11 @@ export const DEFAULT_SETTINGS = {
    */
   bidderRole: 'first',
   secondDelayMin: 20,
+  /**
+   * Projects posted longer ago than this are passed over (both bidders), so a
+   * restart after a pause doesn't bid on stale projects. 0 = no limit.
+   */
+  maxAgeHours: 5,
   /** Random pause after the proposal is written, before the tab opens. */
   genDelayMinSec: 2,
   genDelayMaxSec: 5,
@@ -83,6 +88,8 @@ export async function getRunSettings() {
     slot,
     /** Minutes a project must have been stored before this bidder takes it. */
     delayMin: slot === 2 ? Math.max(0, Number(s.secondDelayMin) || 0) : 0,
+    /** Minutes after which a project is too old to bid on; 0 = no limit. */
+    maxAgeMin: Math.max(0, Number(s.maxAgeHours) || 0) * 60,
     openaiApiKey: s.openaiApiKey.trim(),
     supabaseUrl: s.supabaseUrl.trim().replace(/\/+$/, ''),
     supabaseKey: s.supabaseKey.trim(),

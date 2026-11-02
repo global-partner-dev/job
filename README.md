@@ -192,6 +192,9 @@ $2,000. The first bidder keeps its shorter plan-led message and never uses a nam
 **What "Start bidding" does**, one project at a time:
 
 1. Ask Supabase for the newest project this bidder hasn't bid on (and that is old enough for them).
+   Projects posted more than **5 hours** ago are passed over (panel setting "Don't bid on
+   projects older than", 0 = no limit), so pressing Start after a pause doesn't bid on stale
+   projects. Their flag stays 0: raising the limit brings them back.
 2. If the database only has the listing preview, read the full brief from the project page.
    **Second bidder only:** run the check above and skip the project if it doesn't pass.
 3. Write the proposal with OpenAI, in the language of the brief: a concrete plan for how the

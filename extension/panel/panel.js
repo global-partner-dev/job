@@ -4,11 +4,12 @@ import { defaultPromptFor } from '../lib/default-prompt.js';
 const $ = (id) => document.getElementById(id);
 
 const TEXT_FIELDS = ['openaiApiKey', 'supabaseUrl', 'supabaseKey', 'model', 'portfolioUrl', 'followUpMessage'];
-const NUMBER_FIELDS = ['secondDelayMin', 'followUpHours', 'genDelayMinSec', 'genDelayMaxSec', 'gapDelayMinSec', 'gapDelayMaxSec', 'sendWaitSec'];
+const NUMBER_FIELDS = ['secondDelayMin', 'maxAgeHours', 'followUpHours', 'genDelayMinSec', 'genDelayMaxSec', 'gapDelayMinSec', 'gapDelayMaxSec', 'sendWaitSec'];
 
-/** Whether `n` is acceptable for a field: the second bidder's wait may be 0 (= no wait), the follow-up delay is any positive number of hours, the rest at least 1. */
+/** Whether `n` is acceptable for a field: the second bidder's wait and the age limit may be 0 (= none), the follow-up delay is any positive number of hours, the rest at least 1. */
 const validNumber = (id, n) =>
-  Number.isFinite(n) && (id === 'secondDelayMin' ? n >= 0 : id === 'followUpHours' ? n > 0 : n >= 1);
+  Number.isFinite(n) &&
+  (id === 'secondDelayMin' || id === 'maxAgeHours' ? n >= 0 : id === 'followUpHours' ? n > 0 : n >= 1);
 
 // ---------------------------------------------------------------------------
 // Settings
