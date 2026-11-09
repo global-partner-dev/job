@@ -1,3 +1,4 @@
+import { keepAliveWhile } from './timing.js';
 /**
  * The project queue, read from Supabase with the project's PUBLISHABLE key.
  *
@@ -23,7 +24,11 @@ function headers(cfg) {
   return h;
 }
 
-async function rpc(cfg, fn, args) {
+function rpc(cfg, fn, args) {
+  return keepAliveWhile(rpcOnce(cfg, fn, args));
+}
+
+async function rpcOnce(cfg, fn, args) {
   if (!cfg.supabaseUrl || !cfg.supabaseKey) {
     throw new SupabaseConfigError('Set the Supabase URL and publishable key in the panel.');
   }
@@ -33,6 +38,7 @@ async function rpc(cfg, fn, args) {
       method: 'POST',
       headers: headers(cfg),
       body: JSON.stringify(args),
+      signal: AbortSignal.timeout(30000),
     });
   } catch (e) {
     throw new Error(`Supabase request failed (${e?.message || 'Failed to fetch'}).`);

@@ -1,3 +1,4 @@
+import { keepAliveWhile } from './timing.js';
 // Greeting openers across the three languages Workana posts in. Note the
 // lookahead instead of \b: word boundaries don't fire after an accented letter
 // like the "á" in "Olá", so \b would silently skip half the Portuguese cases.
@@ -164,7 +165,14 @@ export function samplingParams(model) {
  * One chat completion. Returns the reply text, or throws with the API's error.
  * @param {{ apiKey: string, model: string, messages: object[], json?: boolean }} opts
  */
-export async function chatCompletion({ apiKey, model, messages, json = false }) {
+/** Give up on a reply after this long (Chrome kills any single call at 5 min). */
+const OPENAI_TIMEOUT_MS = 180000;
+
+export function chatCompletion(opts) {
+  return keepAliveWhile(chatCompletionOnce(opts));
+}
+
+async function chatCompletionOnce({ apiKey, model, messages, json = false }) {
   if (!apiKey) throw new Error('No OpenAI API key set — add one in AskBot settings.');
 
   let res;
@@ -181,8 +189,10 @@ export async function chatCompletion({ apiKey, model, messages, json = false }) 
         ...samplingParams(model),
         ...(json ? { response_format: { type: 'json_object' } } : {}),
       }),
+      signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
     });
   } catch (e) {
+    if (e?.name === 'TimeoutError') throw new Error(`OpenAI did not reply within ${OPENAI_TIMEOUT_MS / 1000}s`);
     throw new Error(`OpenAI request failed (${e?.message || 'Failed to fetch'}). Check network/API key.`);
   }
 

@@ -19,6 +19,22 @@ export async function keepAliveSleep(ms, isStopped = () => false) {
   }
 }
 
+/**
+ * Await `promise` while keeping the MV3 service worker alive. A network call
+ * (a slow OpenAI reply, a Cloudflare-delayed Workana page) fires no extension
+ * event, so Chrome counts it as idle and kills the worker after ~30s — taking
+ * the whole run with it ("Background worker stopped"). Poking an extension API
+ * every 20s resets that idle timer for as long as the call takes.
+ */
+export async function keepAliveWhile(promise) {
+  const pinger = setInterval(() => chrome.runtime.getPlatformInfo().catch(() => {}), 20000);
+  try {
+    return await promise;
+  } finally {
+    clearInterval(pinger);
+  }
+}
+
 /** Random delay in ms within [minSec, maxSec]. */
 export function randMs(minSec, maxSec) {
   const lo = Math.max(1, Number(minSec) || 1);

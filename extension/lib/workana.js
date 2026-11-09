@@ -1,5 +1,6 @@
 import { parseProjectPage } from './parse.js';
 import { cookieHeaderFor } from './cookies.js';
+import { keepAliveWhile } from './timing.js';
 
 const HEADERS = {
   'X-Requested-With': 'XMLHttpRequest',
@@ -31,6 +32,7 @@ async function workanaFetch(url, options = {}) {
       headers,
       credentials: 'include',
       redirect: 'follow',
+      signal: options.signal || AbortSignal.timeout(60000),
     });
   } catch (e) {
     throw new Error(`Workana request failed (${e?.message || 'Failed to fetch'}): ${url}`);
@@ -42,7 +44,11 @@ async function workanaFetch(url, options = {}) {
  * missing client name) before the question is written.
  * @param {string} slug
  */
-export async function fetchProjectDetails(slug) {
+export function fetchProjectDetails(slug) {
+  return keepAliveWhile(fetchProjectDetailsOnce(slug));
+}
+
+async function fetchProjectDetailsOnce(slug) {
   const res = await workanaFetch(projectPageUrl(slug));
   if (!res.ok) throw new Error(`Project page HTTP ${res.status}`);
   const html = await res.text();

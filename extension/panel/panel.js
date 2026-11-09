@@ -151,14 +151,17 @@ function connect() {
     void chrome.runtime.lastError;
     // A run keeps the worker awake, so a disconnect mid-run means it died.
     if (lastSnapshot?.state.running) {
+      const { message: wasDoing, current } = lastSnapshot.state;
+      const where = `${wasDoing || 'unknown step'}${current ? ` (${current.title})` : ''}`;
+      const at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       render({
         state: {
           ...lastSnapshot.state,
           running: false,
           phase: 'error',
-          message: 'Background worker stopped — press Start to resume.',
+          message: `Background worker stopped while: ${where} — press Start to resume.`,
         },
-        logs: lastSnapshot.logs,
+        logs: [{ at: Date.now(), level: 'error', text: `Worker stopped at ${at} during: ${where}` }, ...lastSnapshot.logs],
       });
     }
   });

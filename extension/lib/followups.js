@@ -1,5 +1,5 @@
 import { getRunSettings, updateFollowUps, appendLog } from './storage.js';
-import { sleep, randMs } from './timing.js';
+import { sleep, keepAliveSleep, randMs } from './timing.js';
 import { openAndFill, waitForSend, closeTab } from './tab-send.js';
 
 /**
@@ -121,7 +121,7 @@ export async function sendDueFollowUps({ log }) {
       } else {
         log(`Follow-up not sent (${reason}): ${label} — trying again in 10 min`, 'warn');
       }
-      await sleep(randMs(cfg.gapDelayMinSec, cfg.gapDelayMaxSec));
+      await keepAliveSleep(randMs(cfg.gapDelayMinSec, cfg.gapDelayMaxSec));
     }
   } catch (err) {
     log(`Follow-ups: ${err?.message || err}`, 'error');
