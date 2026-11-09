@@ -27,6 +27,17 @@ function postedAt(row) {
   return times.length ? Math.min(...times) : null;
 }
 
+/** The time the database sorts the queue by (newest first), in ms, or null. */
+function sortTime(row) {
+  const t = Date.parse(row.posted_date_timestamp ?? row.first_seen_at);
+  return Number.isFinite(t) ? t : null;
+}
+
+/** Older than this bidder's age limit (maxAgeMin; 0 = no limit)? */
+function isTooOld(at, cfg) {
+  return cfg.maxAgeMin > 0 && at !== null && Date.now() - at > cfg.maxAgeMin * 60000;
+}
+
 /** A database row, shaped the way generateQuestion() expects a project. */
 function toProject(row) {
   return {
@@ -83,16 +94,38 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
       continue;
     }
 
-    if (!row) {
-      if (tooOld) {
-        log(`Passed over ${tooOld} project${tooOld === 1 ? '' : 's'} older than ${cfg.maxAgeMin / 60} h`, 'info');
-        tooOld = 0;
+    // Too old to be worth a bid: leave it for the rest of this run. Its flag
+    // stays 0, so raising the limit later brings it back.
+    let allTooOld = false;
+    if (row && isTooOld(postedAt(row), cfg)) {
+      skip.push(row.id);
+      tooOld++;
+      // The queue comes newest first (by this time), so once it is too old
+      // every row after it is too: treat the queue as empty instead of
+      // stepping through the backlog one database call at a time. That walk
+      // fires no extension event, and with ~100 old rows it outlasted Chrome's
+      // 30s idle limit and killed the worker before the first bid.
+      if (isTooOld(sortTime(row), cfg)) {
+        allTooOld = true;
+        row = null;
+      } else {
+        await chrome.runtime.getPlatformInfo().catch(() => {}); // keep the worker awake
+        continue;
       }
+    }
+
+    if (!row) {
+      if (tooOld && !allTooOld) {
+        log(`Passed over ${tooOld} project${tooOld === 1 ? '' : 's'} older than ${cfg.maxAgeMin / 60} h`, 'info');
+      }
+      tooOld = 0;
+      const ageNote = `Nothing newer than ${cfg.maxAgeMin / 60} h in the queue — checking again in 30s`;
       update({
         phase: 'waiting',
         current: null,
-        message:
-          cfg.slot === 2
+        message: allTooOld
+          ? ageNote
+          : cfg.slot === 2
             ? `No project is ${cfg.delayMin} min old yet — checking again in 30s`
             : 'Queue empty — checking again in 30s',
       });
@@ -101,14 +134,6 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
     }
 
     const slug = row.id;
-    // Too old to be worth a bid: leave it for the rest of this run. Its flag
-    // stays 0, so raising the limit later brings it back.
-    const at = postedAt(row);
-    if (cfg.maxAgeMin > 0 && at !== null && Date.now() - at > cfg.maxAgeMin * 60000) {
-      skip.push(slug);
-      tooOld++;
-      continue;
-    }
 
     const job = { id: slug, title: row.title || slug, url: projectPageUrl(slug) };
     update({ current: job, phase: 'preparing', message: 'Reading the project…' });

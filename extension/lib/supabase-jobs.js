@@ -38,7 +38,7 @@ async function rpcOnce(cfg, fn, args) {
       method: 'POST',
       headers: headers(cfg),
       body: JSON.stringify(args),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(20000), // under Chrome's 30s limit, so it fails instead of killing the worker
     });
   } catch (e) {
     throw new Error(`Supabase request failed (${e?.message || 'Failed to fetch'}).`);

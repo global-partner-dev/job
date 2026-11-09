@@ -32,7 +32,7 @@ async function workanaFetch(url, options = {}) {
       headers,
       credentials: 'include',
       redirect: 'follow',
-      signal: options.signal || AbortSignal.timeout(60000),
+      signal: options.signal || AbortSignal.timeout(25000), // under Chrome's 30s limit
     });
   } catch (e) {
     throw new Error(`Workana request failed (${e?.message || 'Failed to fetch'}): ${url}`);
