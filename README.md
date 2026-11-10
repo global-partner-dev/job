@@ -212,17 +212,26 @@ failed database update can never cause a second proposal to the same project.
 
 The run lives in the background worker, so reloading the Workana page doesn't interrupt it.
 
-**Follow-up message.** Fill in **Follow-up** in the panel — a number of hours and a message —
-and every bid that goes out gets a second message into the same conversation that many hours
-later (fractions work: `0.5` = 30 minutes). An empty message turns it off.
+**Follow-up message.** Every bid that goes out gets one more message in the same Workana
+conversation, sent **the moment the client comes back online**:
 
-- It is stored in this browser, so each bidder follows up from their own Workana account.
-- The message is captured when the bid is sent; editing the field afterwards only affects
-  later bids. **Cancel pending** in the panel drops everything still waiting.
-- A one-minute timer sends whatever is due, **even when bidding is stopped**, as long as
-  Chrome is open. If Chrome was closed at the due time it goes out on the next start.
-- If the message box can't be found it tries again 10 minutes later, up to 3 times, then
-  gives up and logs it. It does not check whether the client has already replied.
+- Each waiting conversation (`/inbox/<project>/<you>`) is read every 3 minutes (at most 10 a
+  minute). Workana's page says whether the client is online (`"online": true/false`). Once the
+  client has been seen offline and then shows up online, the follow-up goes out right away.
+- It is written in the language of the client's brief: the panel has one message each for
+  **Portuguese, Spanish and English** (built-in texts, editable). An empty one sends no
+  follow-ups to clients writing in that language.
+- **Not sooner than** (default 1 hour after the bid) keeps it from landing minutes after the bid.
+- It is not sent if the client has already replied, and it is dropped if they don't come back
+  online within 3 days. **Cancel pending** drops everything still waiting.
+- Workana holds back messages it takes for contact details (5+ digits, `@`, links, "WhatsApp",
+  "meet", "fee"… even inside "feel free"). The panel warns under a message that would trip
+  that, and the built-in texts pass all of Workana's rules.
+- A send counts only when the page empties the reply box. If it can't confirm that, it reads
+  the conversation again before retrying, so a message that did go through is never sent
+  twice; after 3 unconfirmed tries it gives up and logs it.
+- It runs from this browser's Workana account on a one-minute timer, **even when bidding is
+  stopped**, as long as Chrome is open.
 
 ---
 
@@ -245,7 +254,8 @@ later (fractions work: `0.5` = 30 minutes). An empty message turns it off.
     ├── panel/                  # side panel UI (bidder role, keys, prompt, follow-up, status, log)
     └── lib/
         ├── bid-queue.js        # fetch → write → send → mark bidded
-        ├── followups.js        # queue + send the follow-up message after each bid
+        ├── followups.js        # watch each conversation, send the follow-up when the client comes online
+        ├── message-rules.js    # Workana's contact-details rules (a match holds a message back)
         ├── tab-send.js         # open the message page, fill it, detect Send (bids + follow-ups)
         ├── supabase-jobs.js    # queue RPC calls
         ├── default-prompt.js   # the built-in prompts (first + second bidder)

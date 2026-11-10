@@ -70,12 +70,15 @@ export function waitForSend(slug, tabId, timeoutMs) {
 
 /**
  * Open the project's message page, fill `text`, and (when autoSend is on) press
- * Send.
+ * Send. A follow-up passes the conversation page as `url` with mode 'reply':
+ * there the content script uses the chat's reply box instead of the
+ * "Ask a question" form.
+ * @param {{url?: string, mode?: 'question'|'reply'}} [where]
  * @returns {Promise<{tabId:number|null, filled:boolean, sent:boolean}>}
  */
-export async function openAndFill(slug, text, autoSend) {
+export async function openAndFill(slug, text, autoSend, { url = askQuestionPageUrl(slug), mode = 'question' } = {}) {
   const tab = await chrome.tabs.create({
-    url: askQuestionPageUrl(slug),
+    url,
     active: !autoSend, // auto-send runs in the background, out of your way
   });
   await waitForComplete(tab.id);
@@ -87,6 +90,7 @@ export async function openAndFill(slug, text, autoSend) {
         slug,
         question: text,
         autoSend,
+        mode,
       });
       if (resp?.ok) return { tabId: tab.id, filled: true, sent: !!resp.sent };
     } catch {

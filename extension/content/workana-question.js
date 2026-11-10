@@ -4,6 +4,8 @@
  * On WR_FILL_QUESTION it switches to the "Ask a question" tab and fills the
  * message box, then presses Send itself when `autoSend` is set. Either way the
  * real submit is reported back to the worker, which then sets `bidded = 1`.
+ * With mode 'reply' (follow-ups) it writes in a conversation's reply box
+ * (/inbox/…) instead.
  */
 (function () {
   const LOG = '[Workana Radar Bid Bot]';
@@ -198,11 +200,98 @@
     return { ok: true, sent };
   }
 
+  // ---------------------------------------------------------------------------
+  // Reply mode: a conversation page (/inbox/<project>/<you>). Its chat is drawn
+  // by script and has no <form>, so the box and its send control are found by
+  // what they are, and "sent" means the box was emptied by the page, which only
+  // happens once the message is accepted.
+  // ---------------------------------------------------------------------------
+  const SEND_LABEL_RE = /\b(send|enviar|envia|responder|reply)\b/i;
+
+  function findReplyField() {
+    const boxes = [...document.querySelectorAll('textarea')].filter(
+      (t) => visible(t) && t.name !== 'bid[content]' && !t.closest('#bidForm'),
+    );
+    return boxes.find((t) => /reply|respond|respon|mensa|message/i.test(t.placeholder || '')) || boxes[0] || null;
+  }
+
+  /** A send button near the box: labelled as one, or the form's submit. Never an unlabelled icon (attach, record…). */
+  function findReplySendButton(field) {
+    for (let el = field.parentElement, depth = 0; el && depth < 6; el = el.parentElement, depth++) {
+      const buttons = [...el.querySelectorAll('button, [role="button"], input[type="submit"]')].filter(
+        (b) => visible(b) && !b.disabled,
+      );
+      const labelled = buttons.find((b) =>
+        SEND_LABEL_RE.test(`${b.textContent} ${b.value || ''} ${b.getAttribute('aria-label') || ''} ${b.title || ''}`),
+      );
+      if (labelled) return labelled;
+      const submit = buttons.find((b) => b.type === 'submit' && b.closest('form'));
+      if (submit) return submit;
+    }
+    return null;
+  }
+
+  /** The page sends on Enter (Ctrl+Enter adds a line). */
+  function pressEnter(field) {
+    for (const type of ['keydown', 'keypress', 'keyup']) {
+      const e = new KeyboardEvent(type, { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true });
+      Object.defineProperty(e, 'keyCode', { get: () => 13 });
+      Object.defineProperty(e, 'which', { get: () => 13 });
+      field.dispatchEvent(e);
+    }
+  }
+
+  async function waitUntilCleared(field, ms) {
+    for (const end = Date.now() + ms; Date.now() < end; ) {
+      if (!field.isConnected || !field.value.trim()) return true;
+      await sleep(250);
+    }
+    return false;
+  }
+
+  /** Your own Send click: report it once the page has emptied the box. */
+  function watchReplySent(field) {
+    const timer = setInterval(() => {
+      if (!field.isConnected || !field.value.trim()) {
+        clearInterval(timer);
+        reportSent();
+      }
+    }, 500);
+  }
+
+  async function fillReply(text, autoSend) {
+    let field = null;
+    for (let attempt = 0; attempt < 20 && !field; attempt++) {
+      field = findReplyField();
+      if (!field) await sleep(500); // the chat is still being drawn
+    }
+    if (!field) return { ok: false, sent: false };
+
+    setNativeValue(field, text);
+    field.scrollIntoView({ block: 'center' });
+    field.focus();
+    if (!autoSend) {
+      watchReplySent(field);
+      return { ok: true, sent: false };
+    }
+
+    await sleep(900);
+    const button = findReplySendButton(field);
+    if (button) button.click();
+    else pressEnter(field);
+    // One try only: if the box doesn't empty, the worker re-reads the
+    // conversation before trying again, so a slow page never gets it twice.
+    const sent = await waitUntilCleared(field, 10000);
+    if (sent) reportSent();
+    return { ok: true, sent };
+  }
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type !== 'WR_FILL_QUESTION') return false;
     filledSlug = msg.slug || slugFromPath();
     reported = false;
-    fillQuestion(msg.question || '', !!msg.autoSend).then(
+    const fill = msg.mode === 'reply' ? fillReply : fillQuestion;
+    fill(msg.question || '', !!msg.autoSend).then(
       (res) => sendResponse(res),
       () => sendResponse({ ok: false, sent: false }),
     );

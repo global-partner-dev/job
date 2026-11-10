@@ -1,15 +1,15 @@
 import { loadSettings, saveSettings, getFollowUps, FOLLOWUP_KEY } from '../lib/storage.js';
 import { defaultPromptFor } from '../lib/default-prompt.js';
+import { contactFlag } from '../lib/message-rules.js';
 
 const $ = (id) => document.getElementById(id);
 
-const TEXT_FIELDS = ['openaiApiKey', 'supabaseUrl', 'supabaseKey', 'model', 'portfolioUrl', 'pastWork', 'followUpMessage'];
-const NUMBER_FIELDS = ['secondDelayMin', 'maxAgeHours', 'followUpHours', 'genDelayMinSec', 'genDelayMaxSec', 'gapDelayMinSec', 'gapDelayMaxSec', 'sendWaitSec'];
+const TEXT_FIELDS = ['openaiApiKey', 'supabaseUrl', 'supabaseKey', 'model', 'portfolioUrl', 'pastWork', 'followUpPt', 'followUpEs', 'followUpEn'];
+const NUMBER_FIELDS = ['secondDelayMin', 'maxAgeHours', 'followUpMinHours', 'genDelayMinSec', 'genDelayMaxSec', 'gapDelayMinSec', 'gapDelayMaxSec', 'sendWaitSec'];
 
-/** Whether `n` is acceptable for a field: the second bidder's wait and the age limit may be 0 (= none), the follow-up delay is any positive number of hours, the rest at least 1. */
-const validNumber = (id, n) =>
-  Number.isFinite(n) &&
-  (id === 'secondDelayMin' || id === 'maxAgeHours' ? n >= 0 : id === 'followUpHours' ? n > 0 : n >= 1);
+/** Whether `n` is acceptable for a field: the second bidder's wait, the age limit and the follow-up's minimum wait may be 0 (= none), the rest at least 1. */
+const ZERO_OK = new Set(['secondDelayMin', 'maxAgeHours', 'followUpMinHours']);
+const validNumber = (id, n) => Number.isFinite(n) && (ZERO_OK.has(id) ? n >= 0 : n >= 1);
 
 // ---------------------------------------------------------------------------
 // Settings
@@ -51,6 +51,7 @@ async function fillForm() {
   $('prompt').value = s.customPrompt.trim() || builtIn();
   promptNote();
   syncRole();
+  renderFlags();
 }
 
 function readForm() {
@@ -100,12 +101,6 @@ $('reset-prompt').addEventListener('click', () => {
 // ---------------------------------------------------------------------------
 // Follow-ups waiting to go out (read straight from storage; the worker owns them)
 // ---------------------------------------------------------------------------
-function formatIn(ms) {
-  const min = Math.ceil(ms / 60000);
-  if (min <= 1) return 'under a minute';
-  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`;
-}
-
 async function renderFollowUps() {
   const list = await getFollowUps();
   $('cancel-followups').disabled = !list.length;
@@ -113,11 +108,23 @@ async function renderFollowUps() {
     $('followup-note').textContent = 'None waiting.';
     return;
   }
-  const next = Math.min(...list.map((f) => Math.max(f.dueAt, f.retryAt)));
-  const wait = next - Date.now();
-  $('followup-note').textContent =
-    `${list.length} waiting — next ${wait > 0 ? `in ${formatIn(wait)}` : 'due now'}`;
+  const offline = list.filter((f) => f.online === false).length;
+  const online = list.filter((f) => f.online === true).length;
+  $('followup-note').textContent = `${list.length} waiting — clients offline: ${offline}, online: ${online}`;
 }
+
+/** Workana blocks a message it takes for contact details, so warn while it's typed. */
+const FOLLOWUP_TEXTS = ['followUpPt', 'followUpEs', 'followUpEn'];
+function renderFlags() {
+  for (const id of FOLLOWUP_TEXTS) {
+    const hit = contactFlag($(id).value);
+    $(`${id}-warn`).hidden = !hit;
+    $(`${id}-warn`).textContent = hit
+      ? `Workana will take “${hit}” for contact details and hold the message back, so it won't go out. Reword it.`
+      : '';
+  }
+}
+FOLLOWUP_TEXTS.forEach((id) => $(id).addEventListener('input', renderFlags));
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && changes[FOLLOWUP_KEY]) renderFollowUps();

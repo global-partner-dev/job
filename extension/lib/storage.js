@@ -46,11 +46,18 @@ export const DEFAULT_SETTINGS = {
   gapDelayMinSec: 5,
   gapDelayMaxSec: 10,
   /**
-   * Follow-up message sent into the same Workana conversation this many hours
-   * after each bid goes out. An empty message turns follow-ups off.
+   * Follow-up: one more message into the conversation, sent when the client
+   * comes back online (seen offline, then online), and no sooner than this
+   * many hours after the bid. One text per language of the brief; an empty one
+   * sends no follow-ups to clients writing in that language.
    */
-  followUpHours: 24,
-  followUpMessage: '',
+  followUpMinHours: 1,
+  followUpPt:
+    'Olá! Passando para saber se você teve a chance de ver minha proposta. Se tiver qualquer dúvida sobre o escopo, o prazo ou o valor, posso esclarecer por aqui mesmo. E se algum ponto não se encaixar no que você precisa, ajusto a proposta sem problema.',
+  followUpEs:
+    '¡Hola! Quería saber si tuvo la oportunidad de ver mi propuesta. Si tiene alguna duda sobre el alcance, el plazo o el presupuesto, con gusto la aclaro por aquí. Y si algún punto no se ajusta a lo que necesita, puedo adaptar la propuesta sin problema.',
+  followUpEn:
+    "Hi! Just checking whether you had a chance to look at my proposal. If you have any questions about the scope, timeline or price, I'm happy to answer them here. And if anything doesn't quite fit what you need, I can adjust the proposal.",
   /** Press Send for you. Off = fill the form and wait for your click. */
   autoSend: true,
   /** How long to wait for your click when autoSend is off. */
@@ -119,13 +126,26 @@ export async function markSlugSent(slug) {
 }
 
 // ---------------------------------------------------------------------------
-// Follow-ups still to send, one per bid:
-//   { slug, title, message, dueAt, retryAt, attempts }
+// Follow-ups still to send, one per bid (see followups.js):
+//   { slug, title, language, bidAt, notBefore, nextCheckAt, online, seenOffline,
+//     checkedAt, ownBaseline, attempts, errors }
 // Kept per browser, so each Workana account follows up on its own bids. The
 // bid loop, the sender and the panel's Cancel all change the list, hence the
 // lock around every read-modify-write.
 // ---------------------------------------------------------------------------
 export const FOLLOWUP_KEY = 'followUps';
+const OWN_SLUG_KEY = 'workanaOwnSlug';
+
+/** Your Workana user name as last read from Workana ('' = not known yet). */
+export async function getOwnSlug() {
+  const { [OWN_SLUG_KEY]: slug = '' } = await chrome.storage.local.get(OWN_SLUG_KEY);
+  return slug;
+}
+
+export function setOwnSlug(slug) {
+  return chrome.storage.local.set({ [OWN_SLUG_KEY]: slug || '' });
+}
+
 const MAX_FOLLOWUPS = 500;
 let followUpLock = Promise.resolve();
 

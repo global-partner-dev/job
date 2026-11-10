@@ -1,4 +1,4 @@
-import { parseProjectPage } from './parse.js';
+import { parseConversation, parseOwnSlug, parseProjectPage } from './parse.js';
 import { cookieHeaderFor } from './cookies.js';
 import { keepAliveWhile } from './timing.js';
 
@@ -21,6 +21,14 @@ export function askQuestionPageUrl(slug) {
 export function projectPageUrl(slug) {
   return `https://www.workana.com/job/${slug}`;
 }
+
+/** Your conversation with the client about a project, once you have written to them. */
+export function conversationUrl(projectSlug, ownSlug) {
+  return `https://www.workana.com/inbox/${projectSlug}/${ownSlug}`;
+}
+
+const LOGIN_PAGE_RE = /Inicia sesión|Log into your Workana|login-form|sign-in/i;
+const NOT_LOGGED_IN = 'Not logged in to Workana. Open workana.com and sign in in this browser.';
 
 async function workanaFetch(url, options = {}) {
   const cookie = await cookieHeaderFor('https://www.workana.com/');
@@ -52,8 +60,37 @@ async function fetchProjectDetailsOnce(slug) {
   const res = await workanaFetch(projectPageUrl(slug));
   if (!res.ok) throw new Error(`Project page HTTP ${res.status}`);
   const html = await res.text();
-  if (/Inicia sesión|Log into your Workana|login-form|sign-in/i.test(html)) {
-    throw new Error('Not logged in to Workana. Open workana.com and sign in in this browser.');
-  }
+  if (LOGIN_PAGE_RE.test(html)) throw new Error(NOT_LOGGED_IN);
   return parseProjectPage(html);
+}
+
+/** Your own Workana user name, read from your inbox page. */
+export function fetchOwnSlug() {
+  return keepAliveWhile(
+    (async () => {
+      const res = await workanaFetch('https://www.workana.com/inbox');
+      if (!res.ok) throw new Error(`Inbox page HTTP ${res.status}`);
+      const slug = parseOwnSlug(await res.text());
+      if (!slug) throw new Error(NOT_LOGGED_IN);
+      return slug;
+    })(),
+  );
+}
+
+/**
+ * Read a conversation page: is the client online, have they replied, how many
+ * messages are yours. See parseConversation().
+ */
+export function fetchConversation(projectSlug, ownSlug) {
+  return keepAliveWhile(
+    (async () => {
+      const res = await workanaFetch(conversationUrl(projectSlug, ownSlug));
+      if (!res.ok) throw new Error(`Conversation page HTTP ${res.status}`);
+      const html = await res.text();
+      const conv = parseConversation(html);
+      // Check the conversation first: a logged-in page can also mention "sign-in".
+      if (!conv.found && LOGIN_PAGE_RE.test(html)) throw new Error(NOT_LOGGED_IN);
+      return conv;
+    })(),
+  );
 }

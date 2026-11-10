@@ -89,6 +89,7 @@ label.check { display: flex; align-items: center; gap: 8px; color: var(--fg); }
 label.check input { margin: 0; flex: none; }
 details summary { cursor: pointer; font-weight: 600; margin-bottom: 10px; }
 .hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+.hint.flag { color: var(--warn); }
 
 .status { margin-top: 10px; padding: 8px 10px; border-radius: 6px; background: var(--field); border: 1px solid var(--line); }
 .status[data-phase="error"] { color: var(--err); }

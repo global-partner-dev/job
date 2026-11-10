@@ -95,3 +95,70 @@ export function parseProjectPage(html) {
     ...parseClientProjectStats(html),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Conversation pages (/inbox/<project>/<you>). The chat is drawn by script, but
+// the data behind it is in the page source: Workana hands it to its <inbox>
+// component as one HTML-escaped JSON attribute.
+// ---------------------------------------------------------------------------
+
+/** Undo the HTML escaping of an attribute value (a service worker has no DOMParser). */
+function decodeAttribute(s) {
+  return s
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * Your own Workana user name (the "miki-16" in /inbox/<project>/miki-16), from
+ * the `Workana = {… "me": {…}}` settings every logged-in page carries.
+ */
+export function parseOwnSlug(html) {
+  const m = (html || '').match(/"me"\s*:\s*\{\s*"id"\s*:\s*\d+\s*,\s*"info"\s*:\s*\{[^{}]*?"slug"\s*:\s*"([^"]+)"/);
+  return m ? m[1] : null;
+}
+
+/**
+ * What a conversation page says about the client.
+ *   found         the page has a conversation at all
+ *   online        Workana shows the client online (null when it doesn't say)
+ *   clientReplied the client has written in the conversation
+ *   ownMessages   how many messages in it are yours
+ *   canAddMessage whether Workana lets you write another one (null = unknown)
+ */
+export function parseConversation(html) {
+  const out = { found: false, online: null, clientReplied: false, ownMessages: 0, canAddMessage: null };
+  const attr = (html || '').match(/<inbox\b[^>]*?\s:initial="([^"]*)"/);
+  if (!attr) return out;
+  const raw = decodeAttribute(attr[1]);
+
+  let conv = null;
+  try {
+    conv = JSON.parse(raw)?.messageIndexData;
+  } catch {
+    /* read the few fields straight from the text below */
+  }
+  if (conv && typeof conv === 'object') {
+    const messages = Array.isArray(conv.messages) ? conv.messages : [];
+    const mine = (m) => /\bself\b/.test(m?.classes || '');
+    out.found = true;
+    out.online = typeof conv.otherParty?.online === 'boolean' ? conv.otherParty.online : null;
+    out.canAddMessage = typeof conv.canAddMessage === 'boolean' ? conv.canAddMessage : null;
+    out.ownMessages = messages.filter(mine).length;
+    out.clientReplied = messages.some((m) => m && !mine(m) && m.isByHuman !== false);
+    return out;
+  }
+
+  const online = raw.match(/"otherParty"\s*:\s*\{[^{}]*?"online"\s*:\s*(true|false)/);
+  if (!online) return out;
+  out.found = true;
+  out.online = online[1] === 'true';
+  const can = raw.match(/"canAddMessage"\s*:\s*(true|false)/);
+  out.canAddMessage = can ? can[1] === 'true' : null;
+  out.ownMessages = (raw.match(/"classes"\s*:\s*"[^"]*\bself\b[^"]*"/g) || []).length;
+  out.clientReplied = /"classes"\s*:\s*"(?![^"]*\bself\b)[^"]*"\s*,\s*"isByHuman"\s*:\s*true/.test(raw);
+  return out;
+}

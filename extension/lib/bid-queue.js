@@ -1,5 +1,5 @@
 import { fetchProjectDetails, projectPageUrl } from './workana.js';
-import { generateQuestion } from './openai.js';
+import { briefLanguage, generateQuestion } from './openai.js';
 import { fetchNextJob, markJobBidded, markJobSkipped, SupabaseConfigError } from './supabase-jobs.js';
 import { getSentSlugs, markSlugSent, appendLog } from './storage.js';
 import { sleep, keepAliveSleep, randMs } from './timing.js';
@@ -278,8 +278,9 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
         log(`Bid sent: ${job.title}`, 'ok');
         await appendLog({ type: 'bid', slug, title: job.title });
         try {
-          if (await scheduleFollowUp(cfg, { slug, title: job.title })) {
-            log(`Follow-up queued in ${cfg.followUpHours} h: ${job.title}`, 'info');
+          const language = briefLanguage(`${project.title}\n${project.description}`);
+          if (await scheduleFollowUp(cfg, { slug, title: job.title, language })) {
+            log(`Follow-up queued (${language}) — goes out when the client is next online: ${job.title}`, 'info');
           }
         } catch (err) {
           log(`Could not queue the follow-up for ${job.title}: ${err.message}`, 'warn');
