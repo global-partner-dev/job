@@ -217,6 +217,7 @@ export async function runBidQueue(cfg, { update, log, isStopped }) {
         portfolioUrl: cfg.portfolioUrl,
         project,
         greetByName: cfg.slot === 2,
+        pastWork: cfg.slot === 2 ? cfg.pastWork || '' : '',
       });
       // The second bidder's prompt answers "SKIP: <reason>" when the brief
       // demands something it can't honestly offer (its own published app…).

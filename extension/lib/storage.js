@@ -19,6 +19,11 @@ export const DEFAULT_SETTINGS = {
   /** Empty = use the built-in prompt for the chosen bidder role. */
   customPrompt: '',
   portfolioUrl: '',
+  /**
+   * Second bidder: the work you have actually delivered, one item per line. Its
+   * proposals mention past work only from this list; empty = no such claims.
+   */
+  pastWork: '',
   supabaseUrl: '',
   /** Supabase publishable (anon) key — the queue functions in 06_bidded.sql. */
   supabaseKey: '',

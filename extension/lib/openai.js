@@ -69,37 +69,27 @@ export function firstNameOf(displayName) {
 }
 
 /**
- * Letters and digits as Unicode "mathematical sans-serif bold", which shows as
- * bold in a plain-text box such as Workana's. Accents are kept as combining
- * marks on the bold letter ("ã" → bold a + U+0303); anything else is unchanged.
+ * The second bidder's greeting line, "Olá Wagner, tudo bem?": the model writes
+ * it in the project's language, and the name in it is set here so it is always
+ * the client's real first name (or none), never one taken from the brief. Only
+ * a short, name-like run between the greeting word and the comma is replaced,
+ * so "Olá, tudo bem?" gets the name put in and a line that isn't a short
+ * greeting is left alone.
  */
-export function toBoldSans(text) {
-  return String(text || '')
-    .normalize('NFD')
-    .replace(/[A-Za-z0-9]/g, (c) => {
-      const code = c.charCodeAt(0);
-      if (c >= 'a') return String.fromCodePoint(0x1d5ee + code - 97);
-      if (c >= 'A') return String.fromCodePoint(0x1d5d4 + code - 65);
-      return String.fromCodePoint(0x1d7ec + code - 48);
-    })
-    .normalize('NFC');
-}
-
-/**
- * The second bidder's greeting line: "Olá Bruno 🖐" in bold, or "Olá 🖐"
- * without a usable name. The model writes the greeting word in the project's
- * language; the name, emoji and bold are set here so they are always right.
- * A first line that isn't a short greeting is left alone.
- */
-export function formatHandGreeting(text, firstName) {
+export function formatNameGreeting(text, firstName) {
   const newlineAt = text.indexOf('\n');
   const firstLine = newlineAt === -1 ? text : text.slice(0, newlineAt);
+  const rest = newlineAt === -1 ? '' : text.slice(newlineAt);
   const m = firstLine.match(GREETING_RE);
-  if (!m || firstLine.length > 60) return text;
-  const opener = m[1].trim();
-  const word = opener[0].toUpperCase() + opener.slice(1);
-  const greeting = `${toBoldSans(firstName ? `${word} ${firstName}` : word)} 🖐`;
-  return greeting + (newlineAt === -1 ? '' : text.slice(newlineAt));
+  if (!m || firstLine.length > 80) return text;
+  const [whole, opener, trailing, punct] = m;
+  const said = trailing.trim();
+  const neutral = NEUTRAL_TRAILER_RE.test(said);
+  if (said && !neutral && !(/^[\p{L}'-]+(?: [\p{L}'-]+)?$/u.test(said) && said.length <= 30)) return text;
+  if (!said && firstName && firstLine.includes(firstName)) return text; // "Olá, Wagner, tudo bem?"
+  const word = opener.trim();
+  const who = firstName ? ` ${firstName}` : neutral ? trailing : '';
+  return `${word[0].toUpperCase()}${word.slice(1)}${who}${punct || ','}${firstLine.slice(whole.length)}${rest}`;
 }
 
 const BUDGET_HEAD_RE = /^((?:Orçamento|Presupuesto|Budget)\s*:\s*\$\s?)([\d.,]+)/i;
@@ -126,6 +116,33 @@ export function settleBudgetTotal(text) {
   const [, label, total] = lines[head].match(BUDGET_HEAD_RE);
   if (!items || !Number.isFinite(sum) || sum === parseAmount(total)) return text;
   lines[head] = lines[head].replace(BUDGET_HEAD_RE, `${label}${sum.toLocaleString('en-US')}`);
+  return lines.join('\n');
+}
+
+// An amount ends in a digit, so the comma in "R$ 2700, com entrega…" is not part of it.
+const STAGE_RE = /^(?:Etapa|Stage|Fase|Phase)\s*\d+[^\n:]*?(?:R\$|USD|US\$|\$)\s?(\d+(?:[.,]\d{3})*)\s*:/i;
+const STAGE_TOTAL_RE = /(\btotal\b[^\n\d]{0,40}?(?:R\$|USD|US\$|\$)\s?)(\d+(?:[.,]\d{3})*)/i;
+
+/**
+ * Staged prices ("Etapa 1 (semana 1), R$ 500: …" lines, then "O total fica em
+ * R$ 2700…") whose stages don't add up to the stated total get the total set to
+ * their sum, written in the same style. A client checks that sum. Text without
+ * such a block is returned unchanged.
+ */
+export function settleStageTotal(text) {
+  const lines = text.split('\n');
+  const first = lines.findIndex((l) => STAGE_RE.test(l));
+  if (first === -1) return text;
+  let sum = 0;
+  let i = first;
+  for (; i < lines.length && STAGE_RE.test(lines[i]); i++) sum += parseAmount(lines[i].match(STAGE_RE)[1]);
+  const at = lines.findIndex((l, n) => n >= i && STAGE_TOTAL_RE.test(l));
+  if (at === -1 || !Number.isFinite(sum)) return text;
+  const total = lines[at].match(STAGE_TOTAL_RE)[2];
+  if (sum === parseAmount(total)) return text;
+  const sep = /[.,](?=\d{3}\b)/.exec(total)?.[0];
+  const written = sep ? sum.toLocaleString('en-US').replace(/,/g, sep) : String(sum);
+  lines[at] = lines[at].replace(STAGE_TOTAL_RE, `$1${written}`);
   return lines.join('\n');
 }
 
@@ -219,11 +236,13 @@ async function chatCompletionOnce({ apiKey, model, messages, json = false }) {
  *
  * By default the client stays anonymous. With `greetByName` (the second
  * bidder) the model is given the client's first name from Workana, when there
- * is a usable one, and the greeting line is set to "Olá <name> 🖐" in bold.
- * @param {{ apiKey: string, model: string, systemPrompt: string, portfolioUrl?: string, project: object, greetByName?: boolean }} opts
+ * is a usable one, and the greeting line carries it ("Olá Wagner, tudo bem?").
+ * The second bidder is also given `pastWork`, the user's own list of delivered
+ * work: the only experience its proposal may mention.
+ * @param {{ apiKey: string, model: string, systemPrompt: string, portfolioUrl?: string, project: object, greetByName?: boolean, pastWork?: string }} opts
  * @returns {Promise<string>}
  */
-export async function generateQuestion({ apiKey, model, systemPrompt, portfolioUrl, project, greetByName = false }) {
+export async function generateQuestion({ apiKey, model, systemPrompt, portfolioUrl, project, greetByName = false, pastWork = '' }) {
   const firstName = greetByName ? firstNameOf(project.clientName) : '';
   const nameRule = !greetByName
     ? 'The client is deliberately anonymous: you are NOT given their name, and you must ' +
@@ -246,6 +265,13 @@ export async function generateQuestion({ apiKey, model, systemPrompt, portfolioU
       ? `Portfolio link you may reference at most once, only if it fits naturally: ${portfolioUrl}`
       : 'No portfolio link provided — do not invent or mention one.',
     'IMPORTANT: never reveal, invent, or sign your own name.',
+    ...(greetByName
+      ? [
+          pastWork.trim()
+            ? `Work you have actually delivered (the only past work you may mention, and only the items that fit this project):\n${pastWork.trim()}`
+            : 'Work you have actually delivered: none listed. Make no claims about past work or projects.',
+        ]
+      : []),
     '',
     'Description:',
     project.description,
@@ -261,5 +287,5 @@ export async function generateQuestion({ apiKey, model, systemPrompt, portfolioU
       ],
     }),
   );
-  return settleBudgetTotal(greetByName ? formatHandGreeting(raw, firstName) : stripNameFromGreeting(raw));
+  return settleStageTotal(settleBudgetTotal(greetByName ? formatNameGreeting(raw, firstName) : stripNameFromGreeting(raw)));
 }

@@ -3,7 +3,7 @@ import { defaultPromptFor } from '../lib/default-prompt.js';
 
 const $ = (id) => document.getElementById(id);
 
-const TEXT_FIELDS = ['openaiApiKey', 'supabaseUrl', 'supabaseKey', 'model', 'portfolioUrl', 'followUpMessage'];
+const TEXT_FIELDS = ['openaiApiKey', 'supabaseUrl', 'supabaseKey', 'model', 'portfolioUrl', 'pastWork', 'followUpMessage'];
 const NUMBER_FIELDS = ['secondDelayMin', 'maxAgeHours', 'followUpHours', 'genDelayMinSec', 'genDelayMaxSec', 'gapDelayMinSec', 'gapDelayMaxSec', 'sendWaitSec'];
 
 /** Whether `n` is acceptable for a field: the second bidder's wait and the age limit may be 0 (= none), the follow-up delay is any positive number of hours, the rest at least 1. */
@@ -20,6 +20,7 @@ const getRole = () => roleRadios().find((r) => r.checked)?.value ?? 'first';
 /** The wait only applies to the second bidder. */
 function syncRole() {
   $('delay-row').hidden = getRole() !== 'second';
+  $('pastwork-row').hidden = getRole() !== 'second';
 }
 
 /** The built-in prompt for the bidder role currently chosen. */
