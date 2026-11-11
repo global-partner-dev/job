@@ -104,7 +104,8 @@ nohup python main.py > scraper.log 2>&1 &
 The category filter is the only OpenAI call in the pipeline, and it resolves its two
 "no verdict" cases in deliberately opposite directions:
 
-- **Full brief unavailable** (detail page blocked, only the listing preview) — the job is
+- **Full brief unavailable** (detail page blocked, only the listing preview; with the default
+  `REQUIRE_CLIENT_STATS=1` such a job is held for the next run first) — the job is
   **kept, unjudged, with no API call**. Classifying a project from a tenth of its text is a
   guess, not a filter, so nothing is discarded on data the model never saw. Those rows get
   `ai_category = 'unjudged_truncated'`.
@@ -126,6 +127,13 @@ Every stored project must pass all of these — see [`parsers/filters.py`](parse
 | Payment ability | clients with 2+ published projects and **0 paid** are excluded    |
 | Template posts  | tagged with both **Chatbot** and **Natural Language Processing**, or WhatsApp bot/automation wording |
 | AI category     | only the target project types (`AI_CATEGORY_FILTER=1`)            |
+
+The payment-ability check needs the client's published/paid counts, which only the project's
+detail page shows. With `REQUIRE_CLIENT_STATS=1` (the default) a new project whose page could
+not be read is **held, not stored**: it is still "new" on the next run, so the page is tried
+again then, for as long as the project stays on the listing. The log shows
+`⏸️ Held N job(s)…` with their ids. Set `REQUIRE_CLIENT_STATS=0` to store such projects
+unjudged instead, which lets non-payers through to the bidders.
 
 ---
 

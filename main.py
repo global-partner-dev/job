@@ -22,7 +22,7 @@ from parsers.client_stats import (
 from parsers.filters import passes_listing_filters, passes_client_filters
 from utils.enrichment import UNJUDGED, job_matches_target_category
 from utils.openai_classifier import OpenAIClassifier
-from config.settings import AI_CATEGORY_FILTER, CAPTURE_FROM_NOW
+from config.settings import AI_CATEGORY_FILTER, CAPTURE_FROM_NOW, REQUIRE_CLIENT_STATS
 from storage.baseline import load_baseline, save_baseline
 
 
@@ -99,13 +99,25 @@ def run_scrape(db, scraper, classifier):
                     continue
                 enrich_job_with_client_stats(job, delay=i < len(new_candidates))
 
-            missing_stats = sum(
-                1 for j in new_candidates if j.get('client_published_projects') is None
-            )
-            if missing_stats:
+            unknown = [
+                j for j in new_candidates
+                if j.get('client_published_projects') is None or j.get('client_paid_projects') is None
+            ]
+            if unknown and REQUIRE_CLIENT_STATS:
+                # Not stored, so still "new" next run: the detail page is tried
+                # again then. Storing it unjudged would let a non-payer (2+
+                # published, 0 paid) through to the bidders and waste a bid.
+                held = {id(j) for j in unknown}
+                new_candidates = [j for j in new_candidates if id(j) not in held]
                 print(
-                    f"⚠️  {missing_stats}/{len(new_candidates)} job pages returned no client stats — "
-                    "the payment-ability filter cannot judge those and keeps them."
+                    f"⏸️  Held {len(unknown)} job(s) — client stats unavailable (detail page not "
+                    "reached); retrying next run: " + ", ".join(j['id'] for j in unknown)
+                )
+            elif unknown:
+                print(
+                    f"⚠️  {len(unknown)}/{len(new_candidates)} job pages returned no client stats — "
+                    "the payment-ability filter cannot judge those and keeps them "
+                    "(REQUIRE_CLIENT_STATS=0)."
                 )
 
         # Stage 2 — client payment-ability + template filters (need the enriched stats / full brief).

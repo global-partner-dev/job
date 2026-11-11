@@ -100,3 +100,10 @@ CAPTURE_FROM_NOW = os.getenv('CAPTURE_FROM_NOW', '1').strip().lower() not in ('0
 # the previous behaviour (store everything that passes country/price/payment).
 AI_CATEGORY_FILTER = os.getenv('AI_CATEGORY_FILTER', '1').strip().lower() not in ('0', 'false', 'no', '')
 
+# Require client stats — a new job is only stored once its detail page has been
+# read and the client's published/paid project counts are known, so the
+# non-payer filter (2+ published, 0 paid) can always judge it. A job whose page
+# could not be read is held back and retried on the next run, for as long as it
+# stays on the listing. Set to '0' to store such jobs unjudged (old behaviour).
+REQUIRE_CLIENT_STATS = os.getenv('REQUIRE_CLIENT_STATS', '1').strip().lower() not in ('0', 'false', 'no', '')
+
